@@ -28,7 +28,7 @@
 namespace syncengine {
 
 /*!
-    \class HybridLogicalClock
+    \class syncengine::HybridLogicalClock
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Hybrid Logical Clock for causal ordering without synchronized clocks.

@@ -32,7 +32,7 @@ namespace syncengine {
 class SyncableDatabase;
 
 /*!
-    \class SyncQuery
+    \class syncengine::SyncQuery
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Prepared query interface for the sync engine's internal connection.

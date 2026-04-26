@@ -34,7 +34,7 @@
 namespace syncengine {
 
 /*!
-    \class SyncableDatabase
+    \class syncengine::SyncableDatabase
     \inmodule QSQLiteSyncEngine
     \internal
     \brief SQLite database wrapper with session extension support for change capture.
@@ -49,7 +49,7 @@ namespace syncengine {
 class SyncableDatabase {
 public:
     /*!
-        \enum SyncableDatabase::ConflictAction
+        \enum syncengine::SyncableDatabase::ConflictAction
         Actions that a conflict handler can return.
 
         \value Replace Overwrite the local row with the incoming change.

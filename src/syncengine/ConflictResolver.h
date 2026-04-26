@@ -27,7 +27,7 @@
 namespace syncengine {
 
 /*!
-    \class ConflictResolver
+    \class syncengine::ConflictResolver
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Last-write-wins conflict resolver using HLC timestamps.

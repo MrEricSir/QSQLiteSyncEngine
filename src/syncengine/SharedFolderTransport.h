@@ -32,7 +32,7 @@
 namespace syncengine {
 
 /*!
-    \class SharedFolderTransport
+    \class syncengine::SharedFolderTransport
     \inmodule QSQLiteSyncEngine
     \internal
     \brief File I/O abstraction for changeset files on a shared folder.

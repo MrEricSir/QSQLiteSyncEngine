@@ -32,7 +32,7 @@
 namespace syncengine {
 
 /*!
-    \struct ChangesetInfo
+    \struct syncengine::ChangesetInfo
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Metadata parsed from a changeset filename.
@@ -54,7 +54,7 @@ struct ChangesetInfo {
 };
 
 /*!
-    \class ChangesetManager
+    \class syncengine::ChangesetManager
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Manages the lifecycle of changeset files on the shared folder.

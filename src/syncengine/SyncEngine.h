@@ -39,46 +39,74 @@ namespace syncengine {
 /*!
     \module QSQLiteSyncEngine
     \title QSQLiteSyncEngine C++ Classes
-    \brief Multi-writer SQLite sync engine for Qt applications.
+    \brief SQLite sync engine for Qt applications.
+
+    Syncs multiple database instances over a shared folder (Google Drive,
+    Dropbox, local network drive), etc. for integration in your application.
 */
 
 /*!
-    \class SyncEngine
+    \namespace syncengine
     \inmodule QSQLiteSyncEngine
-    \brief Orchestrates multi-writer SQLite sync over a shared folder.
+    \brief Contains all classes for the QSQLiteSyncEngine library.
+*/
 
-    SyncEngine is the main entry point for the sync library. It manages a local
-    SQLite database, captures changes using the SQLite Session Extension, writes
-    binary changesets to a shared folder, and applies incoming changesets from
-    other clients.
+/*!
+    \class syncengine::SyncEngine
+    \inmodule QSQLiteSyncEngine
+    \brief Orchestrates SQLite sync over a shared folder.
+
+    SyncEngine is the main entry point for the sync library. Clients write to
+    their own local SQLite database. When changes are made, the engine captures
+    a binary changeset using the SQLite Session Extension, annotates it with a
+    hybrid logical clock (HLC) timestamp and the client's schema version, and
+    writes it to a shared folder. Other clients watch the folder and apply
+    incoming changesets with last-write-wins conflict resolution.
 
     \section1 Recommended Usage (QSQLITE_SYNC driver)
 
-    The simplest way to use the engine is with the QSQLITE_SYNC driver plugin.
-    All writes made through QSqlQuery are automatically captured and synced --
-    no special API calls are needed beyond start(), sync(), and setSchemaVersion().
+    The library ships a QSQLITE_SYNC driver plugin which works almost exactly
+    like Qt's built-in QSQLITE driver. The difference? SQLite Session Extension
+    support.
+
+    Once set up, use QSqlDatabase and QSqlQuery as normal and the database
+    changes will push any local changes to the shared folder automatically.
+
+    To pull and apply changes from remote clients, users can either configure
+    it to happen automatically via the start() method, or call the sync()
+    method manually.
 
     \code
+    // Open with the QSQLITE_SYNC driver.
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE_SYNC");
     db.setDatabaseName("myapp.db");
     db.open();
 
+    // Create the sync engine with a shared folder and client ID.
     SyncEngine engine(db, "/shared/folder", "client-id");
     engine.setSchemaVersion(1);
     engine.start();
 
-    // Use QSqlQuery as normal -- writes are auto-captured
+    // Use QSqlQuery as you normally would for database operations.
+    // Writes are pushed to the shared folder automatically.
     QSqlQuery q(db);
+    q.exec("CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT)");
     q.exec("INSERT INTO items (name) VALUES ('hello')");
+    q.prepare("INSERT INTO items (name) VALUES (?)");
+    q.bindValue(0, "world");
+    q.exec();
 
-    // Pull remote changes
+    // Call sync() to pull and apply changes from other clients.
     engine.sync();
     \endcode
 
+    Transactions, QSqlTableModel, and all other Qt SQL classes work as expected.
+
     \section1 Fallback Usage (without QSQLITE_SYNC driver)
 
-    If the driver plugin is not available, use the path-based constructor and
-    wrap writes in beginWrite() / endWrite():
+    If the driver plugin is not available (e.g., Qt source tree not installed),
+    the engine falls back to a parallel connection and requires beginWrite() /
+    endWrite() calls to track changes:
 
     \code
     SyncEngine engine("/path/to/local.db", "/shared/folder", "client-id");
@@ -88,11 +116,54 @@ namespace syncengine {
     engine.endWrite();
     \endcode
 
+    \section1 Pushing and Pulling
+
+    Sync has two directions -- pushing local changes out and pulling remote
+    changes in -- and they work differently:
+
+    \b{Pushing (automatic).} When users write to the database via QSqlQuery,
+    the engine's commit hook captures the changes and writes a changeset file
+    to the shared folder immediately.
+
+    \b{Pulling (manual or timed).} Remote changesets sitting in the shared
+    folder are NOT applied automatically in the background. Users control when
+    they're applied by calling sync(), either manually or on a timer:
+
+    \code
+    // Option 1: auto-pull on a timer.
+    // start() accepts an interval in milliseconds (default: 1000ms).
+    engine.start(5000);  // pull every 5 seconds
+
+    // Option 2: pull manually whenever you want.
+    engine.start(0);     // disable the timer
+    engine.sync();       // pull now
+    \endcode
+
+    Users should generally prefer explicit pulling. This is because applying
+    remote changes modifies the local database, which could affect in-progress
+    queries or UI state. By controlling the timing, users can pull at safe
+    points, for example before or after a UI update.
+
+    Listen for the syncCompleted signal to be notified of potential changes:
+
+    \code
+    connect(&engine, &SyncEngine::syncCompleted, [&](int count) {
+        if (count > 0)
+            model->select();  // refresh QSqlTableModel
+    });
+    \endcode
+
     \section1 Schema Versioning
 
-    Each changeset is stamped with a schema version. Clients reject changesets
-    from a newer version and emit syncError() with an actionable message. Call
-    setSchemaVersion() to set the version before or after start().
+    The engine embeds a schema version in each changeset filename. Clients
+    reject changesets from a newer schema version and emit syncErrorOccurred()
+    with VersionMismatch and an actionable upgrade message. Rejected changesets
+    remain in the shared folder and are automatically retried after the client
+    upgrades.
+
+    \code
+    engine.setSchemaVersion(2);  // Ideally set before start()
+    \endcode
 
     \section1 Conflict Resolution
 
@@ -100,15 +171,12 @@ namespace syncengine {
     clock timestamps. When two clients modify the same row, the change with the
     higher HLC wins. Equal HLCs are broken by client ID for deterministic
     convergence.
-
-    \sa SyncableDatabase, SharedFolderTransport
 */
 class SyncEngine : public QObject {
     Q_OBJECT
-    Q_ENUMS(SyncError)
 public:
     /*!
-        \enum SyncEngine::SyncError
+        \enum syncengine::SyncEngine::SyncError
         Error types emitted with the syncErrorOccurred() signal.
 
         \value NoError             No error.
@@ -126,6 +194,7 @@ public:
         SchemaMismatch,
         ChangesetError
     };
+    Q_ENUM(SyncError)
 
     /*!
         Constructs a SyncEngine from a QSqlDatabase opened with the

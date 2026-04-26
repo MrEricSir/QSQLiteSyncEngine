@@ -31,7 +31,7 @@
 namespace syncengine {
 
 /*!
-    \class SchemaLogCapture
+    \class syncengine::SchemaLogCapture
     \inmodule QSQLiteSyncEngine
     \internal
     \brief Captures SQLITE_SCHEMA warnings during changeset application.
@@ -46,7 +46,7 @@ namespace syncengine {
 class SchemaLogCapture {
 public:
     /*!
-        \struct SchemaLogCapture::Warning
+        \struct syncengine::SchemaLogCapture::Warning
         \brief A captured SQLITE_SCHEMA warning.
     */
     struct Warning {
@@ -61,7 +61,7 @@ public:
     static void install();
 
     /*!
-        \class SchemaLogCapture::Guard
+        \class syncengine::SchemaLogCapture::Guard
         \brief RAII guard that captures SQLITE_SCHEMA log messages on the current thread.
     */
     class Guard {
