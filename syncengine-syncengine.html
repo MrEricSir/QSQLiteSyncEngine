@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+<!-- SyncEngine.h -->
+  <meta name="description" content="Orchestrates SQLite sync over a shared folder.">
+  <title>syncengine::SyncEngine Class | QSQLiteSyncEngine 0.1.0</title>
+     <link rel="stylesheet" type="text/css" href="style/offline.css" /> </head>
+<body>
+<li><a href="qsqlitesyncengine-module.html" translate="no">QSQLiteSyncEngine</a></li>
+<li>SyncEngine</li>
+<div class="sidebar">
+<div class="toc">
+<h3 id="toc">Contents</h3>
+<ul>
+<li class="level1"><a href="#public-types">Public Types</a></li>
+<li class="level1"><a href="#public-functions">Public Functions</a></li>
+<li class="level1"><a href="#signals">Signals</a></li>
+<li class="level1"><a href="#details">Detailed Description</a></li>
+<li class="level2"><a href="#recommended-usage-qsqlite-sync-driver">Recommended Usage (QSQLITE_SYNC driver)</a></li>
+<li class="level2"><a href="#fallback-usage-without-qsqlite-sync-driver">Fallback Usage (without QSQLITE_SYNC driver)</a></li>
+<li class="level2"><a href="#pushing-and-pulling">Pushing and Pulling</a></li>
+<li class="level2"><a href="#schema-versioning">Schema Versioning</a></li>
+<li class="level2"><a href="#conflict-resolution">Conflict Resolution</a></li>
+</ul>
+</div>
+<div class="sidebar-content" id="sidebar-content"></div></div>
+<h1 class="title" translate="no">syncengine::SyncEngine Class</h1>
+<span class="small-subtitle" translate="no">class <a href="syncengine.html" translate="no">syncengine</a>::SyncEngine</span>
+<!-- $$$SyncEngine-brief -->
+<p>Orchestrates SQLite sync over a shared folder. <a href="#details">More...</a></p>
+<!-- @@@SyncEngine -->
+<div class="table"><table class="alignedsummary requisites" translate="no">
+<tr><td class="memItemLeft rightAlign topAlign"> Header:</td><td class="memItemRight bottomAlign"> <code translate="no">#include &lt;SyncEngine&gt;</code></td></tr>
+</table></div>
+<ul>
+<li><a href="syncengine-syncengine-members.html">List of all members, including inherited members</a></li>
+</ul>
+<h2 id="public-types">Public Types</h2>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft rightAlign topAlign"> enum </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#SyncError-enum" translate="no">SyncError</a></b> { NoError, DatabaseError, TransportError, VersionMismatch, SchemaMismatch, ChangesetError }</td></tr>
+</table></div>
+<h2 id="public-functions">Public Functions</h2>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft rightAlign topAlign"> </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#SyncEngine" translate="no">SyncEngine</a></b>(const int &amp;<i>database</i>, const QString &amp;<i>sharedFolderPath</i>, const QString &amp;<i>clientId</i>, QObject *<i>parent</i> = nullptr)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> bool </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#isRunning" translate="no">isRunning</a></b>() const</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> int </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#schemaVersion" translate="no">schemaVersion</a></b>() const</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#setSchemaVersion" translate="no">setSchemaVersion</a></b>(int <i>version</i>)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> bool </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#start" translate="no">start</a></b>(int <i>syncIntervalMs</i> = 1000)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#stop" translate="no">stop</a></b>()</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> int </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#sync" translate="no">sync</a></b>()</td></tr>
+</table></div>
+<h2 id="signals">Signals</h2>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#changesetApplied" translate="no">changesetApplied</a></b>(const QString &amp;<i>filename</i>)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#conflictResolved" translate="no">conflictResolved</a></b>(const QString &amp;<i>tableName</i>, int <i>conflictType</i>)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#syncCompleted" translate="no">syncCompleted</a></b>(int <i>appliedCount</i>)</td></tr>
+<tr><td class="memItemLeft rightAlign topAlign"> void </td><td class="memItemRight bottomAlign"><b><a href="syncengine-syncengine.html#syncErrorOccurred" translate="no">syncErrorOccurred</a></b>(syncengine::SyncEngine::SyncError <i>error</i>, const QString &amp;<i>message</i>)</td></tr>
+</table></div>
+<!-- $$$SyncEngine-description -->
+<div class="descr">
+<h2 id="details">Detailed Description</h2>
+<p>SyncEngine is the main entry point for the sync library. Clients write to their own local SQLite database. When changes are made, the engine captures a binary changeset using the SQLite Session Extension, annotates it with a hybrid logical clock (HLC) timestamp and the client's schema version, and writes it to a shared folder. Other clients watch the folder and apply incoming changesets with last-write-wins conflict resolution.</p>
+<h3 id="recommended-usage-qsqlite-sync-driver">Recommended Usage (QSQLITE_SYNC driver)</h3>
+<p>The library ships a QSQLITE_SYNC driver plugin which works almost exactly like Qt's built-in QSQLITE driver. The difference? SQLite Session Extension support.</p>
+<p>Once set up, use QSqlDatabase and QSqlQuery as normal and the database changes will push any local changes to the shared folder automatically.</p>
+<p>To pull and apply changes from remote clients, users can either configure it to happen automatically via the <a href="syncengine-syncengine.html#start" translate="no">start</a>() method, or call the <a href="syncengine-syncengine.html#sync" translate="no">sync</a>() method manually.</p>
+<pre class="cpp" translate="no"><span class="comment">// Open with the QSQLITE_SYNC driver.</span>
+<span class="type">QSqlDatabase</span> db <span class="operator">=</span> <span class="type">QSqlDatabase</span><span class="operator">::</span>addDatabase(<span class="string">&quot;QSQLITE_SYNC&quot;</span>);
+db<span class="operator">.</span>setDatabaseName(<span class="string">&quot;myapp.db&quot;</span>);
+db<span class="operator">.</span>open();
+
+<span class="comment">// Create the sync engine with a shared folder and client ID.</span>
+SyncEngine engine(db<span class="operator">,</span> <span class="string">&quot;/shared/folder&quot;</span><span class="operator">,</span> <span class="string">&quot;client-id&quot;</span>);
+engine<span class="operator">.</span>setSchemaVersion(<span class="number">1</span>);
+engine<span class="operator">.</span>start();
+
+<span class="comment">// Use QSqlQuery as you normally would for database operations.</span>
+<span class="comment">// Writes are pushed to the shared folder automatically.</span>
+<span class="type">QSqlQuery</span> q(db);
+q<span class="operator">.</span>exec(<span class="string">&quot;CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT)&quot;</span>);
+q<span class="operator">.</span>exec(<span class="string">&quot;INSERT INTO items (name) VALUES ('hello')&quot;</span>);
+q<span class="operator">.</span>prepare(<span class="string">&quot;INSERT INTO items (name) VALUES (?)&quot;</span>);
+q<span class="operator">.</span>bindValue(<span class="number">0</span><span class="operator">,</span> <span class="string">&quot;world&quot;</span>);
+q<span class="operator">.</span>exec();
+
+<span class="comment">// Call sync() to pull and apply changes from other clients.</span>
+engine<span class="operator">.</span>sync();</pre>
+<p>Transactions, QSqlTableModel, and all other Qt SQL classes work as expected.</p>
+<h3 id="fallback-usage-without-qsqlite-sync-driver">Fallback Usage (without QSQLITE_SYNC driver)</h3>
+<p>If the driver plugin is not available (e.g., Qt source tree not installed), the engine falls back to a parallel connection and requires beginWrite() / endWrite() calls to track changes:</p>
+<pre class="cpp" translate="no">SyncEngine engine(<span class="string">&quot;/path/to/local.db&quot;</span><span class="operator">,</span> <span class="string">&quot;/shared/folder&quot;</span><span class="operator">,</span> <span class="string">&quot;client-id&quot;</span>);
+engine<span class="operator">.</span>start();
+engine<span class="operator">.</span>beginWrite();
+engine<span class="operator">.</span>database()<span class="operator">-</span><span class="operator">&gt;</span>exec(<span class="string">&quot;INSERT INTO items (name) VALUES ('hello')&quot;</span>);
+engine<span class="operator">.</span>endWrite();</pre>
+<h3 id="pushing-and-pulling">Pushing and Pulling</h3>
+<p>Sync has two directions &ndash; pushing local changes out and pulling remote changes in &ndash; and they work differently:</p>
+<p><b>Pushing (automatic).</b> When users write to the database via QSqlQuery, the engine's commit hook captures the changes and writes a changeset file to the shared folder immediately.</p>
+<p><b>Pulling (manual or timed).</b> Remote changesets sitting in the shared folder are NOT applied automatically in the background. Users control when they're applied by calling <a href="syncengine-syncengine.html#sync" translate="no">sync</a>(), either manually or on a timer:</p>
+<pre class="cpp" translate="no"><span class="comment">// Option 1: auto-pull on a timer.</span>
+<span class="comment">// start() accepts an interval in milliseconds (default: 1000ms).</span>
+engine<span class="operator">.</span>start(<span class="number">5000</span>);  <span class="comment">// pull every 5 seconds</span>
+
+<span class="comment">// Option 2: pull manually whenever you want.</span>
+engine<span class="operator">.</span>start(<span class="number">0</span>);     <span class="comment">// disable the timer</span>
+engine<span class="operator">.</span>sync();       <span class="comment">// pull now</span></pre>
+<p>Users should generally prefer explicit pulling. This is because applying remote changes modifies the local database, which could affect in-progress queries or UI state. By controlling the timing, users can pull at safe points, for example before or after a UI update.</p>
+<p>Listen for the <a href="syncengine-syncengine.html#syncCompleted" translate="no">syncCompleted</a> signal to be notified of potential changes:</p>
+<pre class="cpp" translate="no">connect(<span class="operator">&amp;</span>engine<span class="operator">,</span> <span class="operator">&amp;</span>SyncEngine<span class="operator">::</span>syncCompleted<span class="operator">,</span> <span class="operator">[</span><span class="operator">&amp;</span><span class="operator">]</span>(<span class="type">int</span> count) {
+    <span class="keyword">if</span> (count <span class="operator">&gt;</span> <span class="number">0</span>)
+        model<span class="operator">-</span><span class="operator">&gt;</span>select();  <span class="comment">// refresh QSqlTableModel</span>
+});</pre>
+<h3 id="schema-versioning">Schema Versioning</h3>
+<p>The engine embeds a schema version in each changeset filename. Clients reject changesets from a newer schema version and emit <a href="syncengine-syncengine.html#syncErrorOccurred" translate="no">syncErrorOccurred</a>() with <a href="syncengine-syncengine.html#SyncError-enum" translate="no">VersionMismatch</a> and an actionable upgrade message. Rejected changesets remain in the shared folder and are automatically retried after the client upgrades.</p>
+<pre class="cpp" translate="no">engine<span class="operator">.</span>setSchemaVersion(<span class="number">2</span>);  <span class="comment">// Ideally set before start()</span></pre>
+<h3 id="conflict-resolution">Conflict Resolution</h3>
+<p>Conflicts are resolved using last-write-wins (LWW) based on hybrid logical clock timestamps. When two clients modify the same row, the change with the higher HLC wins. Equal HLCs are broken by client ID for deterministic convergence.</p>
+</div>
+<!-- @@@SyncEngine -->
+<div class="types">
+<h2>Member Type Documentation</h2>
+<!-- $$$SyncError$$$NoError$$$DatabaseError$$$TransportError$$$VersionMismatch$$$SchemaMismatch$$$ChangesetError -->
+<h3 class="fn" translate="no" id="SyncError-enum">enum SyncEngine::<span class="name">SyncError</span></h3>
+<p>Error types emitted with the <a href="syncengine-syncengine.html#syncErrorOccurred" translate="no">syncErrorOccurred</a>() signal.</p>
+<div class="table"><table class="valuelist"><tr valign="top" class="odd"><th class="tblConst">Constant</th><th class="tblval">Value</th><th class="tbldscr">Description</th></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::NoError</code></td><td class="topAlign tblval"><code translate="no">0</code></td><td class="topAlign">No error.</td></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::DatabaseError</code></td><td class="topAlign tblval"><code translate="no">1</code></td><td class="topAlign">Failed to open or access the local database.</td></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::TransportError</code></td><td class="topAlign tblval"><code translate="no">2</code></td><td class="topAlign">Failed to read or write changeset files on the shared folder.</td></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::VersionMismatch</code></td><td class="topAlign tblval"><code translate="no">3</code></td><td class="topAlign">A remote changeset requires a newer schema version than this client supports.</td></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::SchemaMismatch</code></td><td class="topAlign tblval"><code translate="no">4</code></td><td class="topAlign">A remote changeset was skipped because the local table schema is incompatible (column count, missing table, or primary key mismatch).</td></tr>
+<tr><td class="topAlign"><code translate="no">syncengine::SyncEngine::ChangesetError</code></td><td class="topAlign tblval"><code translate="no">5</code></td><td class="topAlign">A remote changeset could not be applied (general apply failure).</td></tr>
+</table></div>
+<!-- @@@SyncError -->
+</div>
+<div class="func">
+<h2>Member Function Documentation</h2>
+<!-- $$$SyncEngine[overload1]$$$SyncEngineconstint&constQString&constQString&QObject* -->
+<h3 class="fn" translate="no" id="SyncEngine"><code class="details extra" translate="no">[explicit]</code> SyncEngine::<span class="name">SyncEngine</span>(const <span class="type">int</span> &amp;<i>database</i>, const <span class="type">QString</span> &amp;<i>sharedFolderPath</i>, const <span class="type">QString</span> &amp;<i>clientId</i>, <span class="type">QObject</span> *<i>parent</i> = nullptr)</h3>
+<p>Constructs a SyncEngine from a QSqlDatabase opened with the <code translate="no">QSQLITE_SYNC</code> driver. This is the recommended constructor.</p>
+<p>All writes made through QSqlQuery on <i translate="no">database</i> are automatically captured as changesets and synced to <i translate="no">sharedFolderPath</i>. No manual beginWrite() / endWrite() calls are needed.</p>
+<p>If <i translate="no">database</i> uses the plain <code translate="no">QSQLITE</code> driver instead, the engine falls back to a parallel connection and auto-capture is disabled. In that case, use beginWrite() / endWrite() to track changes.</p>
+<!-- @@@SyncEngine -->
+<!-- $$$changesetApplied[overload1]$$$changesetAppliedconstQString& -->
+<h3 class="fn" translate="no" id="changesetApplied"><code class="details extra" translate="no">[signal]</code> <span class="type">void</span> SyncEngine::<span class="name">changesetApplied</span>(const <span class="type">QString</span> &amp;<i>filename</i>)</h3>
+<p>Emitted when a remote changeset has been successfully applied.</p>
+<!-- @@@changesetApplied -->
+<!-- $$$conflictResolved[overload1]$$$conflictResolvedconstQString&int -->
+<h3 class="fn" translate="no" id="conflictResolved"><code class="details extra" translate="no">[signal]</code> <span class="type">void</span> SyncEngine::<span class="name">conflictResolved</span>(const <span class="type">QString</span> &amp;<i>tableName</i>, <span class="type">int</span> <i>conflictType</i>)</h3>
+<p>Emitted when a conflict was resolved during changeset application.</p>
+<!-- @@@conflictResolved -->
+<!-- $$$isRunning[overload1]$$$isRunning -->
+<h3 class="fn" translate="no" id="isRunning"><span class="type">bool</span> SyncEngine::<span class="name">isRunning</span>() const</h3>
+<p>Returns true if the engine is currently running.</p>
+<!-- @@@isRunning -->
+<!-- $$$schemaVersion[overload1]$$$schemaVersion -->
+<h3 class="fn" translate="no" id="schemaVersion"><span class="type">int</span> SyncEngine::<span class="name">schemaVersion</span>() const</h3>
+<p>Returns the current schema version.</p>
+<p><b>See also </b><a href="syncengine-syncengine.html#setSchemaVersion" translate="no">setSchemaVersion</a>().</p>
+<!-- @@@schemaVersion -->
+<!-- $$$setSchemaVersion[overload1]$$$setSchemaVersionint -->
+<h3 class="fn" translate="no" id="setSchemaVersion"><span class="type">void</span> SyncEngine::<span class="name">setSchemaVersion</span>(<span class="type">int</span> <i>version</i>)</h3>
+<p>Sets the schema version for this client. Produced changesets are stamped with this version. Incoming changesets from a newer version are rejected with a syncError(). The application is responsible for managing the version number.</p>
+<p><b>See also </b><a href="syncengine-syncengine.html#schemaVersion" translate="no">schemaVersion</a>().</p>
+<!-- @@@setSchemaVersion -->
+<!-- $$$start[overload1]$$$startint -->
+<h3 class="fn" translate="no" id="start"><span class="type">bool</span> SyncEngine::<span class="name">start</span>(<span class="type">int</span> <i>syncIntervalMs</i> = 1000)</h3>
+<p>Opens the database and begins syncing. If <i translate="no">syncIntervalMs</i> is greater than zero, a periodic sync timer is started. Pass 0 to disable automatic syncing. Returns true on success.</p>
+<!-- @@@start -->
+<!-- $$$stop[overload1]$$$stop -->
+<h3 class="fn" translate="no" id="stop"><span class="type">void</span> SyncEngine::<span class="name">stop</span>()</h3>
+<p>Stops the sync timer and closes the database.</p>
+<!-- @@@stop -->
+<!-- $$$sync[overload1]$$$sync -->
+<h3 class="fn" translate="no" id="sync"><span class="type">int</span> SyncEngine::<span class="name">sync</span>()</h3>
+<p>Manually triggers a sync cycle: pulls remote changesets from the shared folder and applies them. Returns the number of changesets applied.</p>
+<!-- @@@sync -->
+<!-- $$$syncCompleted[overload1]$$$syncCompletedint -->
+<h3 class="fn" translate="no" id="syncCompleted"><code class="details extra" translate="no">[signal]</code> <span class="type">void</span> SyncEngine::<span class="name">syncCompleted</span>(<span class="type">int</span> <i>appliedCount</i>)</h3>
+<p>Emitted after a sync cycle completes. <i translate="no">appliedCount</i> is the number of changesets that were successfully applied.</p>
+<!-- @@@syncCompleted -->
+<!-- $$$syncErrorOccurred[overload1]$$$syncErrorOccurredsyncengine::SyncEngine::SyncErrorconstQString& -->
+<h3 class="fn" translate="no" id="syncErrorOccurred"><code class="details extra" translate="no">[signal]</code> <span class="type">void</span> SyncEngine::<span class="name">syncErrorOccurred</span>(<span class="type"><a href="syncengine-syncengine.html#SyncError-enum" translate="no">syncengine::SyncEngine::SyncError</a></span> <i>error</i>, const <span class="type">QString</span> &amp;<i>message</i>)</h3>
+<p>Emitted when a sync error occurs. The <i translate="no">error</i> type identifies the category of problem, and <i translate="no">message</i> contains a human-readable description. Use <i translate="no">error</i> for programmatic handling (e.g., prompting the user to upgrade) and <i translate="no">message</i> for display or logging.</p>
+<!-- @@@syncErrorOccurred -->
+</div>
+</body>
+</html>

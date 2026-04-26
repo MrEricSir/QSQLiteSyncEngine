@@ -2,6 +2,53 @@
 <!DOCTYPE QDOCINDEX>
 <INDEX url="" title="QSQLiteSyncEngine Reference Documentation" version="0.1.0" project="QSQLiteSyncEngine">
     <namespace name="" status="active" access="public" module="qsqlitesyncengine">
-        <module name="QSQLiteSyncEngine" href="qsqlitesyncengine-module.html" status="active" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="39" documented="true" seen="true" title="QSQLiteSyncEngine C++ Classes" brief="Multi-writer SQLite sync engine for Qt applications"/>
+        <namespace name="syncengine" href="syncengine.html" status="active" access="public" location="HybridLogicalClock.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/HybridLogicalClock.h" lineno="28" documented="true" module="QSQLiteSyncEngine" brief="Contains all classes for the QSQLiteSyncEngine library">
+            <class name="SyncEngine" fullname="syncengine::SyncEngine" href="syncengine-syncengine.html" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="175" documented="true" bases="QObject" module="QSQLiteSyncEngine" brief="Orchestrates SQLite sync over a shared folder">
+                <contents name="recommended-usage-qsqlite-sync-driver" title="Recommended Usage (QSQLITE_SYNC driver)" level="1"/>
+                <contents name="fallback-usage-without-qsqlite-sync-driver" title="Fallback Usage (without QSQLITE_SYNC driver)" level="1"/>
+                <contents name="pushing-and-pulling" title="Pushing and Pulling" level="1"/>
+                <contents name="schema-versioning" title="Schema Versioning" level="1"/>
+                <contents name="conflict-resolution" title="Conflict Resolution" level="1"/>
+                <function name="SyncEngine" fullname="syncengine::SyncEngine::SyncEngine" href="syncengine-syncengine.html#SyncEngine" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="211" documented="true" meta="constructor" explicit="true" signature="SyncEngine(const int &amp;database, const QString &amp;sharedFolderPath, const QString &amp;clientId, QObject *parent)">
+                    <parameter type="const int &amp;" name="database" default=""/>
+                    <parameter type="const QString &amp;" name="sharedFolderPath" default=""/>
+                    <parameter type="const QString &amp;" name="clientId" default=""/>
+                    <parameter type="QObject *" name="parent" default="nullptr"/>
+                </function>
+                <function name="changesetApplied" fullname="syncengine::SyncEngine::changesetApplied" href="syncengine-syncengine.html#changesetApplied" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="298" documented="true" meta="signal" type="void" signature="void changesetApplied(const QString &amp;filename)">
+                    <parameter type="const QString &amp;" name="filename" default=""/>
+                </function>
+                <function name="conflictResolved" fullname="syncengine::SyncEngine::conflictResolved" href="syncengine-syncengine.html#conflictResolved" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="303" documented="true" meta="signal" type="void" signature="void conflictResolved(const QString &amp;tableName, int conflictType)">
+                    <parameter type="const QString &amp;" name="tableName" default=""/>
+                    <parameter type="int" name="conflictType" default=""/>
+                </function>
+                <function name="isRunning" fullname="syncengine::SyncEngine::isRunning" href="syncengine-syncengine.html#isRunning" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="263" documented="true" meta="plain" const="true" type="bool" signature="bool isRunning() const"/>
+                <function name="schemaVersion" fullname="syncengine::SyncEngine::schemaVersion" href="syncengine-syncengine.html#schemaVersion" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="258" documented="true" meta="plain" const="true" type="int" signature="int schemaVersion() const"/>
+                <function name="setSchemaVersion" fullname="syncengine::SyncEngine::setSchemaVersion" href="syncengine-syncengine.html#setSchemaVersion" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="253" documented="true" meta="plain" type="void" signature="void setSchemaVersion(int version)">
+                    <parameter type="int" name="version" default=""/>
+                </function>
+                <function name="start" fullname="syncengine::SyncEngine::start" href="syncengine-syncengine.html#start" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="234" documented="true" meta="plain" type="bool" signature="bool start(int syncIntervalMs)">
+                    <parameter type="int" name="syncIntervalMs" default="1000"/>
+                </function>
+                <function name="stop" fullname="syncengine::SyncEngine::stop" href="syncengine-syncengine.html#stop" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="239" documented="true" meta="plain" type="void" signature="void stop()"/>
+                <function name="sync" fullname="syncengine::SyncEngine::sync" href="syncengine-syncengine.html#sync" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="245" documented="true" meta="plain" type="int" signature="int sync()"/>
+                <function name="syncCompleted" fullname="syncengine::SyncEngine::syncCompleted" href="syncengine-syncengine.html#syncCompleted" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="317" documented="true" meta="signal" type="void" signature="void syncCompleted(int appliedCount)">
+                    <parameter type="int" name="appliedCount" default=""/>
+                </function>
+                <function name="syncErrorOccurred" fullname="syncengine::SyncEngine::syncErrorOccurred" href="syncengine-syncengine.html#syncErrorOccurred" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="311" documented="true" meta="signal" type="void" signature="void syncErrorOccurred(syncengine::SyncEngine::SyncError error, const QString &amp;message)">
+                    <parameter type="syncengine::SyncEngine::SyncError" name="error" default=""/>
+                    <parameter type="const QString &amp;" name="message" default=""/>
+                </function>
+                <enum name="SyncError" fullname="syncengine::SyncEngine::SyncError" href="syncengine-syncengine.html#SyncError-enum" status="active" access="public" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="189" documented="true">
+                    <value name="NoError" value="0"/>
+                    <value name="DatabaseError" value="1"/>
+                    <value name="TransportError" value="2"/>
+                    <value name="VersionMismatch" value="3"/>
+                    <value name="SchemaMismatch" value="4"/>
+                    <value name="ChangesetError" value="5"/>
+                </enum>
+            </class>
+        </namespace>
+        <module name="QSQLiteSyncEngine" href="qsqlitesyncengine-module.html" status="active" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="39" documented="true" seen="true" title="QSQLiteSyncEngine C++ Classes" brief="SQLite sync engine for Qt applications"/>
     </namespace>
 </INDEX>
