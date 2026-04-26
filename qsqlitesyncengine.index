@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE QDOCINDEX>
+<INDEX url="" title="QSQLiteSyncEngine Reference Documentation" version="0.1.0" project="QSQLiteSyncEngine">
+    <namespace name="" status="active" access="public" module="qsqlitesyncengine">
+        <module name="QSQLiteSyncEngine" href="qsqlitesyncengine-module.html" status="active" location="SyncEngine.h" filepath="/home/runner/work/QSQLiteSyncEngine/QSQLiteSyncEngine/src/syncengine/SyncEngine.h" lineno="39" documented="true" seen="true" title="QSQLiteSyncEngine C++ Classes" brief="Multi-writer SQLite sync engine for Qt applications"/>
+    </namespace>
+</INDEX>
