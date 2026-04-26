@@ -1,0 +1,27 @@
+project = QSQLiteSyncEngine
+module = QSQLiteSyncEngine
+version = 0.1.0
+
+headerdirs = ../src/syncengine
+sourcedirs = ../src/syncengine
+
+headers.fileextensions = "*.h"
+sources.fileextensions = "*.cpp"
+
+documentationinheaders = true
+moduleheader = SyncEngine.h
+
+depends = qtcore
+
+includepaths += ../src \
+                ../src/syncengine \
+                $QT_INSTALL_HEADERS \
+                $QT_INSTALL_HEADERS/QtCore
+
+outputdir = html
+outputformats = HTML
+
+HTML.stylesheets = $QT_INSTALL_DOCS/global/template/style/offline.css
+HTML.headerstyles = " \
+    <link rel=\"stylesheet\" type=\"text/css\" href=\"style/offline.css\" /> \
+"
