@@ -84,25 +84,29 @@ target_link_libraries(syncengine PUBLIC Qt6::Core Qt6::Sql sqlite3)
 # --- QSQLITE_SYNC driver plugin ---
 # Recompiles Qt's QSQLITE driver source against our sqlite3 (with session
 # extension enabled) and registers it as the "QSQLITE_SYNC" driver.
-# Requires Qt source tree for the driver source files and private headers.
-# --- QSQLITE_SYNC driver plugin ---
-# Recompiles Qt's QSQLITE driver source against our sqlite3 (with session
-# extension enabled) and registers it as the "QSQLITE_SYNC" driver.
-if(TARGET Qt6::SqlPrivate)
+#
+# The driver source must come from the SAME Qt version that is installed,
+# because it uses internal Qt APIs that change between versions. We look for
+# the source in Qt's source tree first; if not found, we fall back to the
+# bundled copy in src/driver/ (which matches the Qt version it was copied from).
+set(_qt_sqlite_driver_dir "${_qt_version_root}/Src/qtbase/src/plugins/sqldrivers/sqlite")
+if(TARGET Qt6::SqlPrivate AND _qt_version_root AND EXISTS "${_qt_sqlite_driver_dir}/qsql_sqlite.cpp")
     qt_add_plugin(qsqlite_sync
         PLUGIN_TYPE sqldrivers
         CLASS_NAME QSQLiteSyncDriverPlugin
-        src/driver/qsql_sqlite.cpp
-        src/driver/qsql_sqlite_p.h
-        src/driver/qsql_sqlite_vfs.cpp
-        src/driver/qsql_sqlite_vfs_p.h
+        "${_qt_sqlite_driver_dir}/qsql_sqlite.cpp"
+        "${_qt_sqlite_driver_dir}/qsql_sqlite_p.h"
+        "${_qt_sqlite_driver_dir}/qsql_sqlite_vfs.cpp"
+        "${_qt_sqlite_driver_dir}/qsql_sqlite_vfs_p.h"
         src/driver/smain.cpp
     )
     target_include_directories(qsqlite_sync PRIVATE
-        src/driver
+        "${_qt_sqlite_driver_dir}"
         "${QT_SQLITE_SOURCE}"
     )
     target_link_libraries(qsqlite_sync PRIVATE Qt6::Core Qt6::Sql Qt6::SqlPrivate sqlite3)
+    # Qt's internal driver source relies on QStringBuilder for QStringView concatenation
+    target_compile_definitions(qsqlite_sync PRIVATE QT_USE_QSTRINGBUILDER)
 
     # Place the plugin where QSqlDatabase can discover it at runtime
     add_custom_command(TARGET qsqlite_sync POST_BUILD
@@ -113,9 +117,13 @@ if(TARGET Qt6::SqlPrivate)
             "${CMAKE_BINARY_DIR}/sqldrivers/$<TARGET_FILE_NAME:qsqlite_sync>"
         COMMENT "Copying QSQLITE_SYNC plugin to build/sqldrivers/"
     )
-    message(STATUS "QSQLITE_SYNC driver plugin enabled")
+    message(STATUS "QSQLITE_SYNC driver plugin: enabled (using Qt source tree)")
 else()
-    message(STATUS "QSQLITE_SYNC driver plugin disabled (Qt6::SqlPrivate not found)")
+    if(NOT TARGET Qt6::SqlPrivate)
+        message(STATUS "QSQLITE_SYNC driver plugin: disabled (Qt6::SqlPrivate not found)")
+    else()
+        message(STATUS "QSQLITE_SYNC driver plugin: disabled (Qt source tree not found)")
+    endif()
 endif()
 
 # Tests, demo, and documentation (only when building standalone)
@@ -146,11 +154,21 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     add_sync_test(tst_schema_version   tests/tst_schema_version.cpp)
     add_sync_test(tst_qsqldatabase_integration tests/tst_qsqldatabase_integration.cpp)
     add_sync_test(tst_syncquery        tests/tst_syncquery.cpp)
-    add_sync_test(tst_qsqlite_sync_driver tests/tst_qsqlite_sync_driver.cpp)
     add_sync_test(tst_sync_errors     tests/tst_sync_errors.cpp)
     add_sync_test(tst_robustness      tests/tst_robustness.cpp)
-    add_sync_test(tst_existing_databases tests/tst_existing_databases.cpp)
-    add_sync_test(tst_fts             tests/tst_fts.cpp)
+
+    # Tests that require the QSQLITE_SYNC driver plugin
+    if(TARGET qsqlite_sync)
+        add_sync_test(tst_qsqlite_sync_driver tests/tst_qsqlite_sync_driver.cpp)
+        add_sync_test(tst_existing_databases tests/tst_existing_databases.cpp)
+        add_sync_test(tst_fts             tests/tst_fts.cpp)
+
+        # Set plugin path so ctest finds the driver without manual env setup
+        set_tests_properties(
+            tst_qsqlite_sync_driver tst_existing_databases tst_fts
+            PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}"
+        )
+    endif()
 
     # --- Documentation ---
     find_program(QDOC_EXE qdoc)
