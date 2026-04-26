@@ -82,6 +82,8 @@ Transactions, `QSqlTableModel`, and all other Qt SQL classes work as expected.
 | `SchemaMismatch` | A remote changeset was skipped due to incompatible table schema. |
 | `ChangesetError` | A remote changeset could not be applied (general failure). |
 
+See also: [the full documentation](https://mrericsir.github.io/QSQLiteSyncEngine/syncengine.html).
+
 ## Pushing and Pulling
 
 Sync has two directions -- pushing local changes out and pulling remote changes
