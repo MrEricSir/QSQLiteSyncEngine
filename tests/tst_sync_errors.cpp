@@ -1,5 +1,6 @@
 #include <QTest>
 #include <QTemporaryDir>
+#include <QFile>
 
 #include "syncengine/SyncEngine.h"
 
@@ -49,9 +50,14 @@ private slots:
         QTemporaryDir tmpDir;
         QVERIFY(tmpDir.isValid());
 
-        // Use a path inside a non-existent directory so sqlite3_open fails
-        SyncEngine engine("/nonexistent/dir/that/does/not/exist/test.db",
-                          tmpDir.filePath("shared"), "client1");
+        // Use an empty string as the database path.
+        // sqlite3_open("") opens a temporary database that gets deleted on close,
+        // but our initSyncMetadata uses PRAGMA journal_mode=WAL which can fail
+        // on a temp db. Use a path with null bytes to guarantee failure.
+        QString badPath = tmpDir.filePath("sub1/sub2/sub3/sub4/sub5/test.db");
+        // Don't create the parent directories -- sqlite3_open will fail
+
+        SyncEngine engine(badPath, tmpDir.filePath("shared"), "client1");
 
         CapturedError err;
         captureError(engine, err);
@@ -73,9 +79,13 @@ private slots:
         QTemporaryDir tmpDir;
         QVERIFY(tmpDir.isValid());
 
-        // Use /dev/null/impossible as the shared folder -- can't write there
-        SyncEngine engine(tmpDir.filePath("test.db"),
-                          "/dev/null/impossible/shared", "client1");
+        // Create a regular file, then try to use a path inside it as the
+        // shared folder. mkpath will fail because you can't create a directory
+        // inside a file. This works on all platforms.
+        QString blocker = tmpDir.filePath("blocker");
+        QFile(blocker).open(QIODevice::WriteOnly); // create a regular file
+        QString badShared = blocker + "/impossible/shared";
+        SyncEngine engine(tmpDir.filePath("test.db"), badShared, "client1");
 
         CapturedError err;
         captureError(engine, err);
