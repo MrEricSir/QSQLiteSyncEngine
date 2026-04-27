@@ -60,7 +60,7 @@
 <!-- $$$SyncEngine-description -->
 <div class="descr">
 <h2 id="details">Detailed Description</h2>
-<p>SyncEngine is the main entry point for the sync library. Clients write to their own local SQLite database. When changes are made, the engine captures a binary changeset using the SQLite Session Extension, annotates it with a hybrid logical clock (HLC) timestamp and the client's schema version, and writes it to a shared folder. Other clients watch the folder and apply incoming changesets with last-write-wins conflict resolution.</p>
+<p>SyncEngine is the main entry point for the sync library. Clients write to their own local SQLite database. When changes are made, the engine captures a binary changeset using the SQLite Session Extension, annotates it with a hybrid logical clock (HLC) timestamp and the client's schema version, and writes it to a shared folder. Other clients watch the folder and apply incoming changesets with automatic conflict resolution.</p>
 <h3 id="recommended-usage-qsqlite-sync-driver">Recommended Usage (QSQLITE_SYNC driver)</h3>
 <p>The library ships a QSQLITE_SYNC driver plugin which works almost exactly like Qt's built-in QSQLITE driver. The difference? SQLite Session Extension support.</p>
 <p>Once set up, use QSqlDatabase and QSqlQuery as normal and the database changes will push any local changes to the shared folder automatically.</p>
@@ -115,7 +115,8 @@ engine<span class="operator">.</span>sync();       <span class="comment">// pull
 <p>The engine embeds a schema version in each changeset filename. Clients reject changesets from a newer schema version and emit <a href="syncengine-syncengine.html#syncErrorOccurred" translate="no">syncErrorOccurred</a>() with <a href="syncengine-syncengine.html#SyncError-enum" translate="no">VersionMismatch</a> and an actionable upgrade message. Rejected changesets remain in the shared folder and are automatically retried after the client upgrades.</p>
 <pre class="cpp" translate="no">engine<span class="operator">.</span>setSchemaVersion(<span class="number">2</span>);  <span class="comment">// Ideally set before start()</span></pre>
 <h3 id="conflict-resolution">Conflict Resolution</h3>
-<p>Conflicts are resolved using last-write-wins (LWW) based on hybrid logical clock timestamps. When two clients modify the same row, the change with the higher HLC wins. Equal HLCs are broken by client ID for deterministic convergence.</p>
+<p>When two clients modify the same row, conflicts are resolved using hybrid logical clock (HLC) timestamps: the change with the higher HLC wins. Equal HLCs are broken by client ID for deterministic convergence.</p>
+<p>In practice, this means the last client to write after syncing will win. Syncing advances a client's HLC to be at least as high as all received changesets, so any subsequent local write is guaranteed to have a higher HLC than anything previously synced. The net effect is that the most recent write from a client that is up-to-date takes priority.</p>
 </div>
 <!-- @@@SyncEngine -->
 <div class="types">
