@@ -3,7 +3,7 @@
 #include <QDebug>
 #include <QLoggingCategory>
 
-Q_LOGGING_CATEGORY(lcSync, "syncengine")
+Q_LOGGING_CATEGORY(lcSync, "syncengine", QtWarningMsg)
 
 namespace syncengine {
 
@@ -26,14 +26,6 @@ SyncableDatabase::ConflictHandler ConflictResolver::handler()
         switch (conflictType) {
         case SQLITE_CHANGESET_DATA:
         case SQLITE_CHANGESET_CONFLICT: {
-            // Both sides modified/inserted the same row.
-            // Use LWW: compare incoming changeset HLC vs the HLC stored
-            // for the local version of this row.
-            //
-            // We extract the primary key from the conflict iterator to look
-            // up the per-row HLC in _sync_row_hlc.
-
-            // Get PK value (column 0) to find the row
             sqlite3_value *pkVal = nullptr;
             int rc = sqlite3changeset_conflict(iter, 0, &pkVal);
             int64_t rowid = 0;
@@ -43,39 +35,29 @@ SyncableDatabase::ConflictHandler ConflictResolver::handler()
 
             uint64_t localHlc = m_db->getRowHlc(tableName, rowid);
 
-            qCDebug(lcSync) << (conflictType == SQLITE_CHANGESET_DATA ? "DATA" : "CONFLICT")
-                     << "conflict on" << tableName
-                     << "row" << rowid
-                     << "- incoming HLC:" << m_incomingHlc
-                     << "local HLC:" << localHlc;
-
             if (m_incomingHlc > localHlc) {
-                // Incoming is newer -- replace and update row HLC
                 m_db->updateRowHlc(tableName, rowid, m_incomingHlc, m_incomingClientId);
                 return SyncableDatabase::ConflictAction::Replace;
             } else if (m_incomingHlc == localHlc) {
-                // Tiebreak by client ID for deterministic convergence
                 if (m_incomingClientId > m_db->clientId()) {
                     m_db->updateRowHlc(tableName, rowid, m_incomingHlc, m_incomingClientId);
                     return SyncableDatabase::ConflictAction::Replace;
                 }
                 return SyncableDatabase::ConflictAction::Skip;
             } else {
-                // Local is newer -- skip incoming
                 return SyncableDatabase::ConflictAction::Skip;
             }
         }
 
         case SQLITE_CHANGESET_NOTFOUND:
-            qCDebug(lcSync) << "NOTFOUND conflict on" << tableName;
             return SyncableDatabase::ConflictAction::Skip;
 
         case SQLITE_CHANGESET_CONSTRAINT:
-            qCDebug(lcSync) << "CONSTRAINT conflict on" << tableName;
+            qCWarning(lcSync) << "CONSTRAINT conflict on" << tableName;
             return SyncableDatabase::ConflictAction::Skip;
 
         case SQLITE_CHANGESET_FOREIGN_KEY:
-            qCDebug(lcSync) << "FOREIGN_KEY conflict on" << tableName;
+            qCWarning(lcSync) << "FOREIGN_KEY conflict on" << tableName;
             return SyncableDatabase::ConflictAction::Skip;
 
         default:
