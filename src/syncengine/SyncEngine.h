@@ -317,6 +317,8 @@ signals:
     void syncCompleted(int appliedCount);
 
 private:
+    bool applyOneChangeset(const ChangesetInfo &info, int &applied);
+    void emitApplyError(const ChangesetInfo &info);
     void recordRowHlcs(const QByteArray &changeset, uint64_t hlc);
     void installCommitHook();
     static int commitHookCallback(void *ctx);

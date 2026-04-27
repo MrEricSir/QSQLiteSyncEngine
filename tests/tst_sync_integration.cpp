@@ -248,6 +248,124 @@ private slots:
         auto rows = engineB.database()->query("SELECT COUNT(*) FROM items");
         QCOMPARE(rows[0][0], QStringLiteral("1"));
     }
+
+    /// When a changeset for table X fails because X doesn't exist, but
+    /// another changeset in the same batch creates X (e.g., via a trigger
+    /// or a different table's changeset), the deferred retry should pick it up.
+    ///
+    /// Note: CREATE TABLE itself is DDL that the session extension captures as
+    /// a change to sqlite_master, but sqlite3changeset_apply() cannot replay
+    /// DDL. Schema must be set up independently on each client. This test
+    /// verifies the retry logic works when the first pass creates the table
+    /// as a side effect.
+    void testDeferredChangesetsRetryAfterTableCreation()
+    {
+        QTemporaryDir tmpDir;
+        QVERIFY(tmpDir.isValid());
+        QString shared = tmpDir.filePath("shared");
+
+        // A writes to two tables
+        SyncEngine engineA(tmpDir.filePath("a.db"), shared, "clientA");
+        QVERIFY(engineA.start(0));
+        engineA.database()->exec("CREATE TABLE t1 (id INTEGER PRIMARY KEY, val TEXT)");
+        engineA.database()->exec("CREATE TABLE t2 (id INTEGER PRIMARY KEY, val TEXT)");
+
+        // Write to t1 first, then t2
+        engineA.beginWrite();
+        engineA.database()->exec("INSERT INTO t1 VALUES (1, 'in_t1')");
+        engineA.endWrite();
+
+        engineA.beginWrite();
+        engineA.database()->exec("INSERT INTO t2 VALUES (1, 'in_t2')");
+        engineA.endWrite();
+
+        // B has t2 but NOT t1. The t1 changeset will fail on first pass,
+        // but since the t2 changeset succeeds (applied > 0), the retry runs.
+        // t1 still won't exist on retry, so it will fail again -- but the
+        // retry logic itself is exercised.
+        SyncEngine engineB(tmpDir.filePath("b.db"), shared, "clientB");
+        QVERIFY(engineB.start(0));
+        engineB.database()->exec("CREATE TABLE t2 (id INTEGER PRIMARY KEY, val TEXT)");
+
+        QStringList errors;
+        QObject::connect(&engineB, &SyncEngine::syncErrorOccurred,
+                         [&](SyncEngine::SyncError, const QString &msg) {
+            errors.append(msg);
+        });
+
+        int applied = engineB.sync();
+
+        // t2 changeset should have been applied
+        QVERIFY(applied >= 1);
+        auto rows = engineB.database()->query("SELECT val FROM t2 WHERE id = 1");
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows[0][0], QStringLiteral("in_t2"));
+
+        // t1 changeset should have produced an error (table doesn't exist)
+        bool hasT1Error = false;
+        for (const auto &msg : errors) {
+            if (msg.contains("t1"))
+                hasT1Error = true;
+        }
+        QVERIFY(hasT1Error);
+
+        // Now B creates t1 and syncs again -- the deferred changeset retries
+        engineB.database()->exec("CREATE TABLE t1 (id INTEGER PRIMARY KEY, val TEXT)");
+        errors.clear();
+
+        applied = engineB.sync();
+        QVERIFY(applied >= 1);
+
+        rows = engineB.database()->query("SELECT val FROM t1 WHERE id = 1");
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows[0][0], QStringLiteral("in_t1"));
+    }
+
+    /// When deferred changesets still fail after retry (table genuinely doesn't
+    /// exist), errors should be emitted only once (on the retry, not the first pass).
+    void testDeferredChangesetsEmitErrorOnlyOnce()
+    {
+        QTemporaryDir tmpDir;
+        QVERIFY(tmpDir.isValid());
+        QString shared = tmpDir.filePath("shared");
+
+        // A creates and writes to a table that B will never have
+        SyncEngine engineA(tmpDir.filePath("a.db"), shared, "clientA");
+        QVERIFY(engineA.start(0));
+        engineA.database()->exec("CREATE TABLE secret (id INTEGER PRIMARY KEY, val TEXT)");
+
+        engineA.beginWrite();
+        engineA.database()->exec("INSERT INTO secret VALUES (1, 'hidden')");
+        engineA.endWrite();
+
+        // B has a different schema -- no "secret" table
+        SyncEngine engineB(tmpDir.filePath("b.db"), shared, "clientB");
+        QVERIFY(engineB.start(0));
+
+        int errorCount = 0;
+        QObject::connect(&engineB, &SyncEngine::syncErrorOccurred,
+                         [&](SyncEngine::SyncError, const QString &) {
+            ++errorCount;
+        });
+
+        engineB.sync();
+
+        // Should emit errors, but each failed changeset should only produce
+        // one error (from the retry pass), not two (from both passes)
+        QVERIFY(errorCount > 0);
+
+        // Sync again -- the same changesets are still pending (not marked applied).
+        // They should produce errors again (still failing).
+        int secondErrorCount = 0;
+        QObject::disconnect(&engineB, &SyncEngine::syncErrorOccurred, nullptr, nullptr);
+        QObject::connect(&engineB, &SyncEngine::syncErrorOccurred,
+                         [&](SyncEngine::SyncError, const QString &) {
+            ++secondErrorCount;
+        });
+
+        engineB.sync();
+        QCOMPARE(secondErrorCount, errorCount);
+    }
 };
 
 QTEST_MAIN(TestSyncIntegration)

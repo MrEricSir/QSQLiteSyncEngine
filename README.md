@@ -118,6 +118,23 @@ connect(&engine, &SyncEngine::syncCompleted, [&](int count) {
 });
 ```
 
+## File Locations
+
+The SQLite database file (`.db`, `-wal`, `-shm`) must be stored on a local
+filesystem, **not** on the shared folder. SQLite's WAL mode does not work
+correctly on network filesystems (Google Drive, Dropbox, SMB/NFS mounts).
+
+The changeset files (`.changeset`) **should** go in a shared folder.
+
+```cpp
+// Correct: database is local, a shared folder is used for the changeset files.
+db.setDatabaseName("/Users/me/Library/Application Support/MyApp/local.db");
+SyncEngine engine(db, "/Users/me/Google Drive/sync", "client1");
+
+// Incorrect: database is in a shared folder.
+db.setDatabaseName("/Users/me/Google Drive/sync/local.db");
+```
+
 ## Schema Versioning
 
 The engine embeds a schema version in each changeset filename. Clients reject changesets from a newer schema version and emit `syncErrorOccurred` with `VersionMismatch` and an actionable upgrade message. Rejected changesets remain in the shared folder and are automatically retried after the client upgrades.

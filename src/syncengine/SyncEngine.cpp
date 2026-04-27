@@ -203,53 +203,99 @@ void SyncEngine::recordRowHlcs(const QByteArray &changeset, uint64_t hlc)
     sqlite3changeset_finalize(iter);
 }
 
+bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
+{
+    // Reject changesets from a newer schema version
+    if (info.schemaVersion > m_schemaVersion) {
+        emit syncErrorOccurred(VersionMismatch, QStringLiteral(
+            "Changeset %1 requires schema version %2 but this client is on "
+            "version %3. Please upgrade to the latest version of the application.")
+            .arg(info.filename)
+            .arg(info.schemaVersion)
+            .arg(m_schemaVersion));
+        return true; // not retryable -- don't defer
+    }
+
+    QByteArray data = m_transport->readChangeset(info.filename);
+    if (data.isEmpty()) {
+        qWarning() << "Empty changeset file:" << info.filename;
+        return true; // not retryable
+    }
+
+    m_db->clock().receive(info.hlc);
+
+    ConflictResolver resolver(m_db.get(), info.hlc, info.clientId);
+
+    if (m_db->applyChangeset(data, resolver.handler())) {
+        m_db->markChangesetApplied(info.filename, info.hlc);
+        emit changesetApplied(info.filename);
+        ++applied;
+        return true; // success
+    }
+
+    // Schema mismatch is retryable (a later changeset may create the table)
+    if (!m_db->lastSchemaWarnings().isEmpty())
+        return false; // defer for retry
+
+    // Other errors are not retryable
+    emit syncErrorOccurred(ChangesetError,
+        QStringLiteral("Failed to apply changeset: %1").arg(info.filename));
+    return true; // not retryable
+}
+
+void SyncEngine::emitApplyError(const ChangesetInfo &info)
+{
+    // Re-read the changeset to get fresh schema warnings
+    QByteArray data = m_transport->readChangeset(info.filename);
+    if (data.isEmpty())
+        return;
+
+    ConflictResolver resolver(m_db.get(), info.hlc, info.clientId);
+    m_db->applyChangeset(data, resolver.handler());
+
+    const auto &warnings = m_db->lastSchemaWarnings();
+    if (!warnings.isEmpty()) {
+        for (const auto &w : warnings) {
+            emit syncErrorOccurred(SchemaMismatch,
+                QStringLiteral("Schema mismatch applying %1: %2")
+                    .arg(info.filename, w.message));
+        }
+    } else {
+        emit syncErrorOccurred(ChangesetError,
+            QStringLiteral("Failed to apply changeset: %1").arg(info.filename));
+    }
+}
+
 int SyncEngine::sync()
 {
     QList<ChangesetInfo> pending = m_changesetMgr->pendingChangesets();
 
     int applied = 0;
+    QList<ChangesetInfo> deferred;
+
+    // First pass: apply all pending changesets. Changesets that fail due to
+    // schema mismatch (e.g., table doesn't exist yet) are deferred for a
+    // retry, because a later changeset in this batch may create the table.
     for (const ChangesetInfo &info : pending) {
-        // Reject changesets from a newer schema version
-        if (info.schemaVersion > m_schemaVersion) {
-            emit syncErrorOccurred(VersionMismatch, QStringLiteral(
-                "Changeset %1 requires schema version %2 but this client is on "
-                "version %3. Please upgrade to the latest version of the application.")
-                .arg(info.filename)
-                .arg(info.schemaVersion)
-                .arg(m_schemaVersion));
-            continue;
-        }
-
-        QByteArray data = m_transport->readChangeset(info.filename);
-        if (data.isEmpty()) {
-            qWarning() << "Empty changeset file:" << info.filename;
-            continue;
-        }
-
-        // Update our clock with the remote HLC
-        m_db->clock().receive(info.hlc);
-
-        // Create conflict resolver for this changeset
-        ConflictResolver resolver(m_db.get(), info.hlc, info.clientId);
-
-        if (m_db->applyChangeset(data, resolver.handler())) {
-            m_db->markChangesetApplied(info.filename, info.hlc);
-            emit changesetApplied(info.filename);
-            ++applied;
-        } else {
-            const auto &warnings = m_db->lastSchemaWarnings();
-            if (!warnings.isEmpty()) {
-                for (const auto &w : warnings) {
-                    emit syncErrorOccurred(SchemaMismatch,
-                        QStringLiteral("Schema mismatch applying %1: %2")
-                            .arg(info.filename, w.message));
-                }
-            } else {
-                emit syncErrorOccurred(ChangesetError,
-                    QStringLiteral("Failed to apply changeset: %1").arg(info.filename));
-            }
-        }
+        if (!applyOneChangeset(info, applied))
+            deferred.append(info);
     }
+
+    // Retry pass: if any changesets were deferred and at least one changeset
+    // succeeded (possibly creating the missing table), try the deferred ones
+    // again. Only emit errors for changesets that fail on the retry.
+    if (!deferred.isEmpty() && applied > 0) {
+        QList<ChangesetInfo> stillFailing;
+        for (const ChangesetInfo &info : deferred) {
+            if (!applyOneChangeset(info, applied))
+                stillFailing.append(info);
+        }
+        deferred = stillFailing;
+    }
+
+    // Emit errors for changesets that failed on all attempts
+    for (const ChangesetInfo &info : deferred)
+        emitApplyError(info);
 
     if (applied > 0 || !pending.isEmpty())
         emit syncCompleted(applied);

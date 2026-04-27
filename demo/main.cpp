@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QDir>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
 #include <QSqlDatabase>
@@ -13,13 +14,14 @@ using namespace syncengine;
 static void printUsage()
 {
     QTextStream err(stderr);
-    err << "Usage: syncdemo <shared-folder> [--client <id>]\n"
+    err << "Usage: syncdemo <shared-folder> [--client <id>] [--db <path>]\n"
         << "\n"
         << "  shared-folder   Path to the shared sync folder (required)\n"
         << "  --client <id>   Client identifier (default: client1)\n"
+        << "  --db <path>     Local database file path (default: app data dir)\n"
         << "\n"
-        << "The database file is created alongside the shared folder as\n"
-        << "<shared-folder>_<client-id>.db\n";
+        << "The shared folder can be on Google Drive, Dropbox, or a network drive.\n"
+        << "The database file is always stored locally (never on the shared drive).\n";
 }
 
 static void printHelp()
@@ -48,11 +50,14 @@ int main(int argc, char *argv[])
     // Parse arguments
     QString clientId = QStringLiteral("client1");
     QString sharedFolder;
+    QString dbPath;
 
     QStringList args = app.arguments();
     for (int i = 1; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--client") && i + 1 < args.size()) {
             clientId = args[++i];
+        } else if (args[i] == QStringLiteral("--db") && i + 1 < args.size()) {
+            dbPath = args[++i];
         } else if (!args[i].startsWith('-') && sharedFolder.isEmpty()) {
             sharedFolder = args[i];
         }
@@ -63,8 +68,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Derive the database path from the shared folder and client ID
-    QString dbPath = sharedFolder + QStringLiteral("_") + clientId + QStringLiteral(".db");
+    // Database must be stored locally, never on the shared/network drive.
+    // SQLite WAL mode does not work on network filesystems.
+    if (dbPath.isEmpty()) {
+        QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QDir().mkpath(dataDir);
+        dbPath = dataDir + QStringLiteral("/sync_%1.db").arg(clientId);
+    }
 
     QTextStream out(stdout);
     QTextStream in(stdin);
@@ -80,6 +90,17 @@ int main(int argc, char *argv[])
         out << "Failed to open database: " << db.lastError().text() << "\n";
         return 1;
     }
+
+    // Create test table BEFORE starting the engine. start() runs an initial
+    // sync, so the table must exist for incoming changesets to apply.
+    QSqlQuery setup(db);
+    setup.exec(QStringLiteral(
+        "CREATE TABLE IF NOT EXISTS items ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  name TEXT NOT NULL,"
+        "  value TEXT,"
+        "  modified_by TEXT"
+        ")"));
 
     SyncEngine engine(db, sharedFolder, clientId);
 
@@ -104,16 +125,6 @@ int main(int argc, char *argv[])
         out << "Failed to start sync engine\n";
         return 1;
     }
-
-    // Create test table via QSqlQuery
-    QSqlQuery setup(db);
-    setup.exec(QStringLiteral(
-        "CREATE TABLE IF NOT EXISTS items ("
-        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "  name TEXT NOT NULL,"
-        "  value TEXT,"
-        "  modified_by TEXT"
-        ")"));
 
     printHelp();
     out << "> ";
