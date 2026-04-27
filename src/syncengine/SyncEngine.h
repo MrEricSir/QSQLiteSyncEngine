@@ -61,7 +61,7 @@ namespace syncengine {
     a binary changeset using the SQLite Session Extension, annotates it with a
     hybrid logical clock (HLC) timestamp and the client's schema version, and
     writes it to a shared folder. Other clients watch the folder and apply
-    incoming changesets with last-write-wins conflict resolution.
+    incoming changesets with automatic conflict resolution.
 
     \section1 Recommended Usage (QSQLITE_SYNC driver)
 
@@ -167,10 +167,15 @@ namespace syncengine {
 
     \section1 Conflict Resolution
 
-    Conflicts are resolved using last-write-wins (LWW) based on hybrid logical
-    clock timestamps. When two clients modify the same row, the change with the
-    higher HLC wins. Equal HLCs are broken by client ID for deterministic
-    convergence.
+    When two clients modify the same row, conflicts are resolved using hybrid
+    logical clock (HLC) timestamps: the change with the higher HLC wins. Equal
+    HLCs are broken by client ID for deterministic convergence.
+
+    In practice, this means the last client to write after syncing will win.
+    Syncing advances a client's HLC to be at least as high as all received
+    changesets, so any subsequent local write is guaranteed to have a higher
+    HLC than anything previously synced. The net effect is that the most
+    recent write from a client that is up-to-date takes priority.
 */
 class SyncEngine : public QObject {
     Q_OBJECT

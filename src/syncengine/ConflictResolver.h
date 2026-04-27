@@ -30,12 +30,14 @@ namespace syncengine {
     \class syncengine::ConflictResolver
     \inmodule QSQLiteSyncEngine
     \internal
-    \brief Last-write-wins conflict resolver using HLC timestamps.
+    \brief HLC-based conflict resolver.
 
     ConflictResolver provides a SyncableDatabase::ConflictHandler that compares
     the incoming changeset's HLC against per-row HLC values stored in the
     \c _sync_row_hlc shadow table. The change with the higher HLC wins. Equal
-    HLCs are broken deterministically by client ID.
+    HLCs are broken deterministically by client ID. Because syncing advances
+    the local HLC, the practical effect is that the last client to write
+    after syncing takes priority.
 
     \sa SyncableDatabase, HybridLogicalClock
 */

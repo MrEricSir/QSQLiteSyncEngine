@@ -6,7 +6,7 @@ SQLite sync engine for Qt applications. Syncs multiple database instances over a
 
 ## Under the Hood
 
-Clients write to their own local SQLite database. When changes are made, the engine captures a binary changeset using the SQLite Session Extension, annotates the changeset with a hybrid logical clock (HLC) timestamp and the client's schema version, and writes it to a shared folder. Other clients watch the folder and apply incoming changesets with last-write-wins conflict resolution.
+Clients write to their own local SQLite database. When changes are made, the engine captures a binary changeset using the SQLite Session Extension, annotates the changeset with a hybrid logical clock (HLC) timestamp and the client's schema version, and writes it to a shared folder. Other clients watch the folder and apply incoming changesets with automatic conflict resolution.
 
 Basic sync strategy:
 ```
