@@ -260,12 +260,12 @@ public:
     /*!
         Returns the current schema version.
     */
-    int schemaVersion() const { return m_schemaVersion; }
+    int schemaVersion() const { return currentSchemaVersion; }
 
     /*!
         Returns true if the engine is currently running.
     */
-    bool isRunning() const { return m_running.loadRelaxed() != 0; }
+    bool isRunning() const { return running.loadRelaxed() != 0; }
 
     /*!
         \internal
@@ -273,7 +273,7 @@ public:
         or when the QSQLITE_SYNC driver is not available. Prefer QSqlQuery on
         the QSQLITE_SYNC QSqlDatabase instead.
     */
-    SyncableDatabase *database() { return m_db.get(); }
+    SyncableDatabase *database() { return db.get(); }
 
     /*!
         \internal
@@ -294,7 +294,7 @@ public:
         \internal
         Returns the SharedFolderTransport for testing (e.g., simulated latency).
     */
-    SharedFolderTransport *transport() { return m_transport.get(); }
+    SharedFolderTransport *transport() { return sharedTransport.get(); }
 
 signals:
     /*!
@@ -325,19 +325,21 @@ private:
     bool applyOneChangeset(const ChangesetInfo &info, int &applied);
     void emitApplyError(const ChangesetInfo &info);
     void recordRowHlcs(const QByteArray &changeset, uint64_t hlc);
+    void snapshotIfNeeded();
+    QStringList discoverUserTables();
     void installCommitHook();
     static int commitHookCallback(void *ctx);
 
     Q_INVOKABLE void onTransactionCommitted();
 
-    std::unique_ptr<SyncableDatabase> m_db;
-    std::unique_ptr<SharedFolderTransport> m_transport;
-    std::unique_ptr<ChangesetManager> m_changesetMgr;
-    QTimer m_syncTimer;
-    QAtomicInt m_running{0};
-    int m_schemaVersion = 0;
-    bool m_autoCapture = false;
-    QAtomicInt m_inManualWrite{0};
+    std::unique_ptr<SyncableDatabase> db;
+    std::unique_ptr<SharedFolderTransport> sharedTransport;
+    std::unique_ptr<ChangesetManager> changesetMgr;
+    QTimer syncTimer;
+    QAtomicInt running{0};
+    int currentSchemaVersion = 0;
+    bool autoCapture = false;
+    QAtomicInt inManualWrite{0};
 };
 
 } // namespace syncengine

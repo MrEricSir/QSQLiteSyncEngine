@@ -156,6 +156,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     add_sync_test(tst_syncquery        tests/tst_syncquery.cpp)
     add_sync_test(tst_sync_errors     tests/tst_sync_errors.cpp)
     add_sync_test(tst_robustness      tests/tst_robustness.cpp)
+    add_sync_test(tst_snapshot        tests/tst_snapshot.cpp)
 
     # Tests that require the QSQLITE_SYNC driver plugin
     if(TARGET qsqlite_sync)

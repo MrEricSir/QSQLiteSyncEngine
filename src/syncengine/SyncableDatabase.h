@@ -96,6 +96,14 @@ public:
     /*! Applies a binary \a changeset to this database. Returns true on success. */
     bool applyChangeset(const QByteArray &changeset, ConflictHandler handler = nullptr);
 
+    /*!
+        Generates a changeset containing INSERT records for all rows in the
+        specified \a tables. Uses sqlite3session_diff against an empty
+        in-memory database so every existing row appears as an INSERT.
+        Returns an empty QByteArray on failure or if the tables are empty.
+    */
+    QByteArray generateSnapshot(const QStringList &tables);
+
     /*! Executes a SQL statement. Returns true on success. */
     bool exec(const QString &sql);
 
@@ -103,16 +111,16 @@ public:
     QList<QStringList> query(const QString &sql);
 
     /*! Returns the raw sqlite3 handle for advanced usage. */
-    sqlite3 *handle() const { return m_db; }
+    sqlite3 *handle() const { return db; }
 
     /*! Returns the client identifier. */
-    QString clientId() const { return m_clientId; }
+    QString clientId() const { return clientIdentifier; }
 
     /*! \internal Returns a mutable reference to the HybridLogicalClock. */
-    HybridLogicalClock &clock() { return m_clock; }
+    HybridLogicalClock &clock() { return hlcClock; }
 
     /*! Returns a const reference to the HybridLogicalClock. */
-    const HybridLogicalClock &clock() const { return m_clock; }
+    const HybridLogicalClock &clock() const { return hlcClock; }
 
     /*! \internal Initializes internal sync metadata tables. */
     bool initSyncMetadata();
@@ -133,16 +141,16 @@ public:
         Returns schema warnings from the most recent applyChangeset() call.
         Non-empty if tables were skipped due to schema incompatibility.
     */
-    const QList<SchemaLogCapture::Warning> &lastSchemaWarnings() const { return m_schemaWarnings; }
+    const QList<SchemaLogCapture::Warning> &lastSchemaWarnings() const { return schemaWarnings; }
 
 private:
-    QString m_dbPath;
-    QString m_clientId;
-    sqlite3 *m_db = nullptr;
-    sqlite3_session *m_session = nullptr;
-    HybridLogicalClock m_clock;
-    QList<SchemaLogCapture::Warning> m_schemaWarnings;
-    bool m_ownsHandle = true;
+    QString dbPath;
+    QString clientIdentifier;
+    sqlite3 *db = nullptr;
+    sqlite3_session *session = nullptr;
+    HybridLogicalClock hlcClock;
+    QList<SchemaLogCapture::Warning> schemaWarnings;
+    bool ownsHandle = true;
 };
 
 } // namespace syncengine

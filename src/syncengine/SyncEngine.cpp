@@ -9,11 +9,11 @@ SyncEngine::SyncEngine(const QString &dbPath,
                        const QString &clientId,
                        QObject *parent)
     : QObject(parent)
-    , m_db(std::make_unique<SyncableDatabase>(dbPath, clientId))
-    , m_transport(std::make_unique<SharedFolderTransport>(sharedFolderPath, this))
-    , m_changesetMgr(std::make_unique<ChangesetManager>(m_db.get(), m_transport.get(), this))
+    , db(std::make_unique<SyncableDatabase>(dbPath, clientId))
+    , sharedTransport(std::make_unique<SharedFolderTransport>(sharedFolderPath, this))
+    , changesetMgr(std::make_unique<ChangesetManager>(db.get(), sharedTransport.get(), this))
 {
-    connect(&m_syncTimer, &QTimer::timeout, this, [this]() {
+    connect(&syncTimer, &QTimer::timeout, this, [this]() {
         sync();
     });
 }
@@ -23,21 +23,21 @@ SyncEngine::SyncEngine(const QSqlDatabase &database,
                        const QString &clientId,
                        QObject *parent)
     : QObject(parent)
-    , m_transport(std::make_unique<SharedFolderTransport>(sharedFolderPath, this))
-    , m_autoCapture(true)
+    , sharedTransport(std::make_unique<SharedFolderTransport>(sharedFolderPath, this))
+    , autoCapture(true)
 {
     // QSQLITE_SYNC uses our sqlite3 (with session extension) -- safe to share handle.
     // Plain QSQLITE uses Qt's bundled sqlite3 -- must open a parallel connection.
     if (database.driverName() == QStringLiteral("QSQLITE_SYNC")) {
         QVariant handle = database.driver()->handle();
         auto *sqliteHandle = *static_cast<sqlite3 **>(handle.data());
-        m_db = std::make_unique<SyncableDatabase>(sqliteHandle, clientId);
+        db = std::make_unique<SyncableDatabase>(sqliteHandle, clientId);
     } else {
-        m_db = std::make_unique<SyncableDatabase>(database.databaseName(), clientId);
-        m_autoCapture = false;
+        db = std::make_unique<SyncableDatabase>(database.databaseName(), clientId);
+        autoCapture = false;
     }
-    m_changesetMgr = std::make_unique<ChangesetManager>(m_db.get(), m_transport.get(), this);
-    connect(&m_syncTimer, &QTimer::timeout, this, [this]() {
+    changesetMgr = std::make_unique<ChangesetManager>(db.get(), sharedTransport.get(), this);
+    connect(&syncTimer, &QTimer::timeout, this, [this]() {
         sync();
     });
 }
@@ -49,93 +49,105 @@ SyncEngine::~SyncEngine()
 
 bool SyncEngine::start(int syncIntervalMs)
 {
-    if (m_running.loadRelaxed())
+    if (running.loadRelaxed()) {
         return true;
+    }
 
     SchemaLogCapture::install();
 
-    if (!m_db->open()) {
+    if (!db->open()) {
         emit syncErrorOccurred(DatabaseError, QStringLiteral("Failed to open database"));
         return false;
     }
 
-    m_running.storeRelaxed(1);
+    running.storeRelaxed(1);
 
-    if (m_autoCapture)
+    if (autoCapture) {
         installCommitHook();
+    }
+
+    // On first start with a new shared folder, snapshot existing data so
+    // other clients can pick it up.
+    snapshotIfNeeded();
 
     // Do an initial sync
     sync();
 
     // Start periodic sync
-    if (syncIntervalMs > 0)
-        m_syncTimer.start(syncIntervalMs);
+    if (syncIntervalMs > 0) {
+        syncTimer.start(syncIntervalMs);
+    }
 
     return true;
 }
 
 void SyncEngine::stop()
 {
-    m_syncTimer.stop();
+    syncTimer.stop();
 
-    if (m_autoCapture && m_db->handle())
-        sqlite3_commit_hook(m_db->handle(), nullptr, nullptr);
+    if (autoCapture && db->handle()) {
+        sqlite3_commit_hook(db->handle(), nullptr, nullptr);
+    }
 
-    m_running.storeRelaxed(0);
-    m_db->close();
+    running.storeRelaxed(0);
+    db->close();
 }
 
 void SyncEngine::setSchemaVersion(int version)
 {
-    m_schemaVersion = version;
-    if (m_changesetMgr)
-        m_changesetMgr->setSchemaVersion(version);
+    currentSchemaVersion = version;
+    if (changesetMgr) {
+        changesetMgr->setSchemaVersion(version);
+    }
 }
 
 bool SyncEngine::beginWrite()
 {
-    m_inManualWrite.storeRelaxed(1);
-    return m_db->beginSession();
+    inManualWrite.storeRelaxed(1);
+    return db->beginSession();
 }
 
 QString SyncEngine::endWrite()
 {
-    m_inManualWrite.storeRelaxed(0);
+    inManualWrite.storeRelaxed(0);
 
-    QByteArray changeset = m_db->endSession();
+    QByteArray changeset = db->endSession();
     if (changeset.isEmpty()) {
-        if (m_autoCapture)
-            m_db->beginSession();
+        if (autoCapture) {
+            db->beginSession();
+        }
         return {};
     }
 
-    uint64_t hlc = m_db->clock().now();
+    uint64_t hlc = db->clock().now();
 
     // Record row HLCs for locally modified rows so conflict resolution works
     recordRowHlcs(changeset, hlc);
 
-    QString filename = m_changesetMgr->writeChangeset(changeset, hlc);
+    QString filename = changesetMgr->writeChangeset(changeset, hlc);
 
     if (filename.isEmpty()) {
         emit syncErrorOccurred(TransportError, QStringLiteral("Failed to write changeset"));
     }
 
     // Restart auto-capture session
-    if (m_autoCapture)
-        m_db->beginSession();
+    if (autoCapture) {
+        db->beginSession();
+    }
 
     return filename;
 }
 
 void SyncEngine::installCommitHook()
 {
-    if (!m_db->handle())
+    if (!db->handle()) {
         return;
+    }
 
-    sqlite3_commit_hook(m_db->handle(), commitHookCallback, this);
+    sqlite3_commit_hook(db->handle(), commitHookCallback, this);
 
     // Start the initial session so changes are captured from now on
-    m_db->beginSession();
+    db->beginSession();
 }
 
 int SyncEngine::commitHookCallback(void *ctx)
@@ -148,18 +160,19 @@ int SyncEngine::commitHookCallback(void *ctx)
 
 void SyncEngine::onTransactionCommitted()
 {
-    if (!m_running.loadRelaxed() || m_inManualWrite.loadRelaxed())
+    if (!running.loadRelaxed() || inManualWrite.loadRelaxed()) {
         return;
+    }
 
-    QByteArray changeset = m_db->endSession();
+    QByteArray changeset = db->endSession();
     if (!changeset.isEmpty()) {
-        uint64_t hlc = m_db->clock().now();
+        uint64_t hlc = db->clock().now();
         recordRowHlcs(changeset, hlc);
-        m_changesetMgr->writeChangeset(changeset, hlc);
+        changesetMgr->writeChangeset(changeset, hlc);
     }
 
     // Restart session to capture next set of changes
-    m_db->beginSession();
+    db->beginSession();
 }
 
 void SyncEngine::recordRowHlcs(const QByteArray &changeset, uint64_t hlc)
@@ -168,7 +181,9 @@ void SyncEngine::recordRowHlcs(const QByteArray &changeset, uint64_t hlc)
     int rc = sqlite3changeset_start(&iter, changeset.size(),
                                      const_cast<void *>(static_cast<const void *>(changeset.data())));
     if (rc != SQLITE_OK) {
-        if (iter) sqlite3changeset_finalize(iter);
+        if (iter) {
+            sqlite3changeset_finalize(iter);
+        }
         return;
     }
 
@@ -179,12 +194,14 @@ void SyncEngine::recordRowHlcs(const QByteArray &changeset, uint64_t hlc)
         int bIndirect = 0;
         sqlite3changeset_op(iter, &tableName, &nCols, &op, &bIndirect);
 
-        if (!tableName)
+        if (!tableName) {
             continue;
+        }
 
         QString table = QString::fromUtf8(tableName);
-        if (table.startsWith(QStringLiteral("_sync_")))
+        if (table.startsWith(QStringLiteral("_sync_"))) {
             continue;
+        }
 
         // Get PK value (column 0) to record the row HLC
         sqlite3_value *pkVal = nullptr;
@@ -197,45 +214,127 @@ void SyncEngine::recordRowHlcs(const QByteArray &changeset, uint64_t hlc)
 
         if (pkVal) {
             int64_t rowid = sqlite3_value_int64(pkVal);
-            m_db->updateRowHlc(table, rowid, hlc, m_db->clientId());
+            db->updateRowHlc(table, rowid, hlc, db->clientId());
         }
     }
     sqlite3changeset_finalize(iter);
 }
 
+QStringList SyncEngine::discoverUserTables()
+{
+    QStringList tables;
+    if (!db->handle()) {
+        return tables;
+    }
+
+    // Collect virtual table names so we can skip their shadow tables below.
+    QStringList virtualTableNames;
+    sqlite3_stmt *vtStmt = nullptr;
+    sqlite3_prepare_v2(db->handle(),
+        "SELECT name FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'",
+        -1, &vtStmt, nullptr);
+    while (sqlite3_step(vtStmt) == SQLITE_ROW) {
+        virtualTableNames.append(QString::fromUtf8(
+            reinterpret_cast<const char *>(sqlite3_column_text(vtStmt, 0))));
+    }
+    sqlite3_finalize(vtStmt);
+
+    // Real user tables, excluding sync metadata and SQLite internals.
+    sqlite3_stmt *stmt = nullptr;
+    sqlite3_prepare_v2(db->handle(),
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND sql LIKE 'CREATE TABLE%' "
+        "AND name NOT LIKE '_sync_%' "
+        "AND name NOT LIKE 'sqlite_%'",
+        -1, &stmt, nullptr);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        QString name = QString::fromUtf8(
+            reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+
+        // Skip shadow tables (e.g., MyFTS_content, MyFTS_data).
+        bool isShadow = false;
+        for (const QString &vt : virtualTableNames) {
+            if (name.startsWith(vt + QStringLiteral("_"))) {
+                isShadow = true;
+                break;
+            }
+        }
+        if (!isShadow) {
+            tables.append(name);
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    return tables;
+}
+
+void SyncEngine::snapshotIfNeeded()
+{
+    // Check if this client has ever written a changeset to the shared folder.
+    const QStringList allFiles = sharedTransport->listChangesets();
+    const QString myId = db->clientId();
+    for (const QString &file : allFiles) {
+        ChangesetInfo info = ChangesetManager::parseFilename(file);
+        if (info.clientId == myId) {
+            return; // Already have changesets - not a first start.
+        }
+    }
+
+    // First start with this shared folder. Snapshot all user tables.
+    QStringList tables = discoverUserTables();
+    if (tables.isEmpty()) {
+        return;
+    }
+
+    QByteArray changeset = db->generateSnapshot(tables);
+    if (changeset.isEmpty()) {
+        return;
+    }
+
+    uint64_t hlc = db->clock().now();
+    recordRowHlcs(changeset, hlc);
+    QString filename = changesetMgr->writeChangeset(changeset, hlc);
+    if (filename.isEmpty()) {
+        emit syncErrorOccurred(TransportError,
+            QStringLiteral("Failed to write initial snapshot"));
+    }
+}
+
 bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
 {
     // Reject changesets from a newer schema version
-    if (info.schemaVersion > m_schemaVersion) {
+    if (info.schemaVersion > currentSchemaVersion) {
         emit syncErrorOccurred(VersionMismatch, QStringLiteral(
             "Changeset %1 requires schema version %2 but this client is on "
             "version %3. Please upgrade to the latest version of the application.")
             .arg(info.filename)
             .arg(info.schemaVersion)
-            .arg(m_schemaVersion));
+            .arg(currentSchemaVersion));
         return true; // not retryable -- don't defer
     }
 
-    QByteArray data = m_transport->readChangeset(info.filename);
+    QByteArray data = sharedTransport->readChangeset(info.filename);
     if (data.isEmpty()) {
         qWarning() << "Empty changeset file:" << info.filename;
         return true; // not retryable
     }
 
-    m_db->clock().receive(info.hlc);
+    db->clock().receive(info.hlc);
 
-    ConflictResolver resolver(m_db.get(), info.hlc, info.clientId);
+    ConflictResolver resolver(db.get(), info.hlc, info.clientId);
 
-    if (m_db->applyChangeset(data, resolver.handler())) {
-        m_db->markChangesetApplied(info.filename, info.hlc);
+    if (db->applyChangeset(data, resolver.handler())) {
+        db->markChangesetApplied(info.filename, info.hlc);
         emit changesetApplied(info.filename);
         ++applied;
         return true; // success
     }
 
     // Schema mismatch is retryable (a later changeset may create the table)
-    if (!m_db->lastSchemaWarnings().isEmpty())
+    if (!db->lastSchemaWarnings().isEmpty()) {
         return false; // defer for retry
+    }
 
     // Other errors are not retryable
     emit syncErrorOccurred(ChangesetError,
@@ -246,14 +345,15 @@ bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
 void SyncEngine::emitApplyError(const ChangesetInfo &info)
 {
     // Re-read the changeset to get fresh schema warnings
-    QByteArray data = m_transport->readChangeset(info.filename);
-    if (data.isEmpty())
+    QByteArray data = sharedTransport->readChangeset(info.filename);
+    if (data.isEmpty()) {
         return;
+    }
 
-    ConflictResolver resolver(m_db.get(), info.hlc, info.clientId);
-    m_db->applyChangeset(data, resolver.handler());
+    ConflictResolver resolver(db.get(), info.hlc, info.clientId);
+    db->applyChangeset(data, resolver.handler());
 
-    const auto &warnings = m_db->lastSchemaWarnings();
+    const auto &warnings = db->lastSchemaWarnings();
     if (!warnings.isEmpty()) {
         for (const auto &w : warnings) {
             emit syncErrorOccurred(SchemaMismatch,
@@ -268,7 +368,7 @@ void SyncEngine::emitApplyError(const ChangesetInfo &info)
 
 int SyncEngine::sync()
 {
-    QList<ChangesetInfo> pending = m_changesetMgr->pendingChangesets();
+    QList<ChangesetInfo> pending = changesetMgr->pendingChangesets();
 
     int applied = 0;
     QList<ChangesetInfo> deferred;
@@ -277,8 +377,9 @@ int SyncEngine::sync()
     // schema mismatch (e.g., table doesn't exist yet) are deferred for a
     // retry, because a later changeset in this batch may create the table.
     for (const ChangesetInfo &info : pending) {
-        if (!applyOneChangeset(info, applied))
+        if (!applyOneChangeset(info, applied)) {
             deferred.append(info);
+        }
     }
 
     // Retry pass: if any changesets were deferred and at least one changeset
@@ -287,18 +388,21 @@ int SyncEngine::sync()
     if (!deferred.isEmpty() && applied > 0) {
         QList<ChangesetInfo> stillFailing;
         for (const ChangesetInfo &info : deferred) {
-            if (!applyOneChangeset(info, applied))
+            if (!applyOneChangeset(info, applied)) {
                 stillFailing.append(info);
+            }
         }
         deferred = stillFailing;
     }
 
     // Emit errors for changesets that failed on all attempts
-    for (const ChangesetInfo &info : deferred)
+    for (const ChangesetInfo &info : deferred) {
         emitApplyError(info);
+    }
 
-    if (applied > 0 || !pending.isEmpty())
+    if (applied > 0 || !pending.isEmpty()) {
         emit syncCompleted(applied);
+    }
 
     return applied;
 }
