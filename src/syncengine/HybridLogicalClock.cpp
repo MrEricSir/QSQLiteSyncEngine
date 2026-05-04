@@ -10,32 +10,32 @@ static constexpr uint64_t kLogicalMask = (1ULL << kLogicalBits) - 1;
 
 HybridLogicalClock::HybridLogicalClock()
 {
-    m_hlc = pack(wallClockMs(), 0);
+    hlc = pack(wallClockMs(), 0);
 }
 
 uint64_t HybridLogicalClock::now()
 {
-    std::lock_guard lock(m_mutex);
+    std::lock_guard lock(mutex);
 
     uint64_t physNow = wallClockMs();
-    uint64_t oldPhys = physicalComponent(m_hlc);
-    uint16_t oldLogical = logicalComponent(m_hlc);
+    uint64_t oldPhys = physicalComponent(hlc);
+    uint16_t oldLogical = logicalComponent(hlc);
 
     if (physNow > oldPhys) {
-        m_hlc = pack(physNow, 0);
+        hlc = pack(physNow, 0);
     } else {
-        m_hlc = pack(oldPhys, oldLogical + 1);
+        hlc = pack(oldPhys, oldLogical + 1);
     }
-    return m_hlc;
+    return hlc;
 }
 
 uint64_t HybridLogicalClock::receive(uint64_t remoteHlc)
 {
-    std::lock_guard lock(m_mutex);
+    std::lock_guard lock(mutex);
 
     uint64_t physNow = wallClockMs();
-    uint64_t localPhys = physicalComponent(m_hlc);
-    uint16_t localLogical = logicalComponent(m_hlc);
+    uint64_t localPhys = physicalComponent(hlc);
+    uint16_t localLogical = logicalComponent(hlc);
     uint64_t remotePhys = physicalComponent(remoteHlc);
     uint16_t remoteLogical = logicalComponent(remoteHlc);
 
@@ -43,16 +43,16 @@ uint64_t HybridLogicalClock::receive(uint64_t remoteHlc)
 
     if (maxPhys == localPhys && maxPhys == remotePhys) {
         // All three are equal -- take max logical + 1
-        m_hlc = pack(maxPhys, std::max(localLogical, remoteLogical) + 1);
+        hlc = pack(maxPhys, std::max(localLogical, remoteLogical) + 1);
     } else if (maxPhys == localPhys) {
-        m_hlc = pack(maxPhys, localLogical + 1);
+        hlc = pack(maxPhys, localLogical + 1);
     } else if (maxPhys == remotePhys) {
-        m_hlc = pack(maxPhys, remoteLogical + 1);
+        hlc = pack(maxPhys, remoteLogical + 1);
     } else {
         // Wall clock is ahead of both
-        m_hlc = pack(maxPhys, 0);
+        hlc = pack(maxPhys, 0);
     }
-    return m_hlc;
+    return hlc;
 }
 
 uint64_t HybridLogicalClock::physicalComponent(uint64_t hlc)
@@ -72,8 +72,8 @@ uint64_t HybridLogicalClock::pack(uint64_t physicalMs, uint16_t logical)
 
 uint64_t HybridLogicalClock::current() const
 {
-    std::lock_guard lock(m_mutex);
-    return m_hlc;
+    std::lock_guard lock(mutex);
+    return hlc;
 }
 
 uint64_t HybridLogicalClock::wallClockMs() const

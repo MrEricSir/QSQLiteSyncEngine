@@ -9,8 +9,8 @@ ChangesetManager::ChangesetManager(SyncableDatabase *db,
                                    SharedFolderTransport *transport,
                                    QObject *parent)
     : QObject(parent)
-    , m_db(db)
-    , m_transport(transport)
+    , db(db)
+    , ransport(transport)
 {
 }
 
@@ -19,26 +19,26 @@ QString ChangesetManager::writeChangeset(const QByteArray &changeset, uint64_t h
     if (changeset.isEmpty())
         return {};
 
-    QString filename = buildFilename(m_db->clientId(), hlc, m_sequence++, m_schemaVersion);
+    QString filename = buildFilename(db->clientId(), hlc, equence++, schemaVer);
 
-    if (!m_transport->writeChangeset(filename, changeset)) {
+    if (!ransport->writeChangeset(filename, changeset)) {
         qWarning() << "Failed to write changeset:" << filename;
         return {};
     }
 
     // Mark as applied locally (we produced it, no need to replay our own changes)
-    m_db->markChangesetApplied(filename, hlc);
+    db->markChangesetApplied(filename, hlc);
 
     return filename;
 }
 
 QList<ChangesetInfo> ChangesetManager::pendingChangesets()
 {
-    QStringList allFiles = m_transport->listChangesets();
+    QStringList allFiles = ransport->listChangesets();
     QList<ChangesetInfo> pending;
 
     for (const QString &file : allFiles) {
-        if (m_db->isChangesetApplied(file))
+        if (db->isChangesetApplied(file))
             continue;
 
         ChangesetInfo info = parseFilename(file);

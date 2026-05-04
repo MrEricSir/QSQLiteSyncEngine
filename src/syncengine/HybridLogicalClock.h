@@ -79,8 +79,8 @@ public:
 private:
     uint64_t wallClockMs() const;
 
-    mutable std::mutex m_mutex;
-    uint64_t m_hlc = 0;
+    mutable std::mutex mutex;
+    uint64_t hlc = 0;
 };
 
 } // namespace syncengine

@@ -9,9 +9,9 @@ namespace syncengine {
 
 ConflictResolver::ConflictResolver(SyncableDatabase *db, uint64_t incomingHlc,
                                    const QString &incomingClientId)
-    : m_db(db)
-    , m_incomingHlc(incomingHlc)
-    , m_incomingClientId(incomingClientId)
+    : db(db)
+    , incomingHlc(incomingHlc)
+    , incomingClientId(incomingClientId)
 {
 }
 
@@ -33,14 +33,14 @@ SyncableDatabase::ConflictHandler ConflictResolver::handler()
                 rowid = sqlite3_value_int64(pkVal);
             }
 
-            uint64_t localHlc = m_db->getRowHlc(tableName, rowid);
+            uint64_t localHlc = db->getRowHlc(tableName, rowid);
 
-            if (m_incomingHlc > localHlc) {
-                m_db->updateRowHlc(tableName, rowid, m_incomingHlc, m_incomingClientId);
+            if (incomingHlc > localHlc) {
+                db->updateRowHlc(tableName, rowid, incomingHlc, incomingClientId);
                 return SyncableDatabase::ConflictAction::Replace;
-            } else if (m_incomingHlc == localHlc) {
-                if (m_incomingClientId > m_db->clientId()) {
-                    m_db->updateRowHlc(tableName, rowid, m_incomingHlc, m_incomingClientId);
+            } else if (incomingHlc == localHlc) {
+                if (incomingClientId > db->clientId()) {
+                    db->updateRowHlc(tableName, rowid, incomingHlc, incomingClientId);
                     return SyncableDatabase::ConflictAction::Replace;
                 }
                 return SyncableDatabase::ConflictAction::Skip;

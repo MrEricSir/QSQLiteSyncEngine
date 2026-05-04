@@ -8,26 +8,26 @@ namespace syncengine {
 
 SharedFolderTransport::SharedFolderTransport(const QString &folderPath, QObject *parent)
     : QObject(parent)
-    , m_folderPath(folderPath)
+    , folderPathString(folderPath)
 {
     QDir dir(folderPath);
     if (!dir.exists())
         dir.mkpath(QStringLiteral("."));
 
-    m_watcher.addPath(folderPath);
-    connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
+    watcher.addPath(folderPath);
+    connect(&watcher, &QFileSystemWatcher::directoryChanged,
             this, &SharedFolderTransport::changesetsAvailable);
 }
 
 bool SharedFolderTransport::writeChangeset(const QString &filename, const QByteArray &data)
 {
-    if (m_latencyMs > 0) {
+    if (latencyMs > 0) {
         qint64 now = QDateTime::currentMSecsSinceEpoch();
-        m_delayed.append({filename, data, now + m_latencyMs});
+        m_delayed.append({filename, data, now + latencyMs});
         return true;
     }
 
-    QString filePath = m_folderPath + QStringLiteral("/") + filename;
+    QString filePath = folderPathString + QStringLiteral("/") + filename;
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
         qWarning() << "Failed to write changeset:" << filePath << file.errorString();
@@ -40,7 +40,7 @@ bool SharedFolderTransport::writeChangeset(const QString &filename, const QByteA
 
 QByteArray SharedFolderTransport::readChangeset(const QString &filename)
 {
-    QString filePath = m_folderPath + QStringLiteral("/") + filename;
+    QString filePath = folderPathString + QStringLiteral("/") + filename;
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         qWarning() << "Failed to read changeset:" << filePath;
@@ -53,7 +53,7 @@ QStringList SharedFolderTransport::listChangesets()
 {
     flushDelayed();
 
-    QDir dir(m_folderPath);
+    QDir dir(folderPathString);
     QStringList filters;
     filters << QStringLiteral("*.changeset");
     QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
@@ -62,7 +62,7 @@ QStringList SharedFolderTransport::listChangesets()
 
 void SharedFolderTransport::setSimulatedLatencyMs(int ms)
 {
-    m_latencyMs = ms;
+    latencyMs = ms;
 }
 
 void SharedFolderTransport::flushDelayed()
@@ -76,7 +76,7 @@ void SharedFolderTransport::flushDelayed()
     for (const auto &df : m_delayed) {
         if (now >= df.visibleAfterMs) {
             // Write to disk now
-            QString filePath = m_folderPath + QStringLiteral("/") + df.filename;
+            QString filePath = folderPathString + QStringLiteral("/") + df.filename;
             QFile file(filePath);
             if (file.open(QIODevice::WriteOnly)) {
                 file.write(df.data);

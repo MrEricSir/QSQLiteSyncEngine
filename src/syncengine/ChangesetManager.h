@@ -95,16 +95,16 @@ public:
                                  int schemaVersion = 0);
 
     /*! Sets the \a version to embed in produced changesets. */
-    void setSchemaVersion(int version) { m_schemaVersion = version; }
+    void setSchemaVersion(int version) { schemaVer = version; }
 
     /*! Returns the current schema version. */
-    int schemaVersion() const { return m_schemaVersion; }
+    int schemaVersion() const { return schemaVer; }
 
 private:
-    SyncableDatabase *m_db;
-    SharedFolderTransport *m_transport;
-    uint64_t m_sequence = 0;
-    int m_schemaVersion = 0;
+    SyncableDatabase *db;
+    SharedFolderTransport *ransport;
+    uint64_t equence = 0;
+    int schemaVer = 0;
 };
 
 } // namespace syncengine

@@ -56,9 +56,9 @@ public:
     SyncableDatabase::ConflictHandler handler();
 
 private:
-    SyncableDatabase *m_db;
-    uint64_t m_incomingHlc;
-    QString m_incomingClientId;
+    SyncableDatabase *db;
+    uint64_t incomingHlc;
+    QString incomingClientId;
 };
 
 } // namespace syncengine

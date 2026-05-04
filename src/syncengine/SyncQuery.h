@@ -116,9 +116,9 @@ public:
 private:
     void finalize();
 
-    SyncableDatabase *m_db;
-    sqlite3_stmt *m_stmt = nullptr;
-    QString m_lastError;
+    SyncableDatabase *db;
+    sqlite3_stmt *stmt = nullptr;
+    QString lastDbError;
 };
 
 } // namespace syncengine

@@ -6,7 +6,7 @@
 namespace syncengine {
 
 SyncQuery::SyncQuery(SyncableDatabase *database)
-    : m_db(database)
+    : db(database)
 {
 }
 
@@ -16,21 +16,21 @@ SyncQuery::~SyncQuery()
 }
 
 SyncQuery::SyncQuery(SyncQuery &&other) noexcept
-    : m_db(other.m_db)
-    , m_stmt(other.m_stmt)
-    , m_lastError(std::move(other.m_lastError))
+    : db(other.db)
+    , stmt(other.stmt)
+    , lastDbError(std::move(other.lastDbError))
 {
-    other.m_stmt = nullptr;
+    other.stmt = nullptr;
 }
 
 SyncQuery &SyncQuery::operator=(SyncQuery &&other) noexcept
 {
     if (this != &other) {
         finalize();
-        m_db = other.m_db;
-        m_stmt = other.m_stmt;
-        m_lastError = std::move(other.m_lastError);
-        other.m_stmt = nullptr;
+        db = other.db;
+        stmt = other.stmt;
+        lastDbError = std::move(other.lastDbError);
+        other.stmt = nullptr;
     }
     return *this;
 }
@@ -38,13 +38,13 @@ SyncQuery &SyncQuery::operator=(SyncQuery &&other) noexcept
 bool SyncQuery::prepare(const QString &sql)
 {
     finalize();
-    m_lastError.clear();
+    lastDbError.clear();
 
     QByteArray utf8 = sql.toUtf8();
-    int rc = sqlite3_prepare_v2(m_db->handle(), utf8.constData(), utf8.size(), &m_stmt, nullptr);
+    int rc = sqlite3_prepare_v2(db->handle(), utf8.constData(), utf8.size(), &stmt, nullptr);
     if (rc != SQLITE_OK) {
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db->handle()));
-        m_stmt = nullptr;
+        lastDbError = QString::fromUtf8(sqlite3_errmsg(db->handle()));
+        stmt = nullptr;
         return false;
     }
     return true;
@@ -52,38 +52,38 @@ bool SyncQuery::prepare(const QString &sql)
 
 void SyncQuery::bindValue(int index, const QVariant &value)
 {
-    if (!m_stmt)
+    if (!stmt)
         return;
 
     // sqlite3 uses 1-based parameter indices
     int idx = index + 1;
 
     if (value.isNull()) {
-        sqlite3_bind_null(m_stmt, idx);
+        sqlite3_bind_null(stmt, idx);
     } else {
         switch (value.typeId()) {
         case QMetaType::Int:
         case QMetaType::UInt:
         case QMetaType::Bool:
-            sqlite3_bind_int(m_stmt, idx, value.toInt());
+            sqlite3_bind_int(stmt, idx, value.toInt());
             break;
         case QMetaType::LongLong:
         case QMetaType::ULongLong:
-            sqlite3_bind_int64(m_stmt, idx, value.toLongLong());
+            sqlite3_bind_int64(stmt, idx, value.toLongLong());
             break;
         case QMetaType::Double:
         case QMetaType::Float:
-            sqlite3_bind_double(m_stmt, idx, value.toDouble());
+            sqlite3_bind_double(stmt, idx, value.toDouble());
             break;
         case QMetaType::QByteArray: {
             QByteArray ba = value.toByteArray();
-            sqlite3_bind_blob(m_stmt, idx, ba.constData(), ba.size(), SQLITE_TRANSIENT);
+            sqlite3_bind_blob(stmt, idx, ba.constData(), ba.size(), SQLITE_TRANSIENT);
             break;
         }
         default: {
             // Treat everything else as text
             QByteArray utf8 = value.toString().toUtf8();
-            sqlite3_bind_text(m_stmt, idx, utf8.constData(), utf8.size(), SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, idx, utf8.constData(), utf8.size(), SQLITE_TRANSIENT);
             break;
         }
         }
@@ -92,13 +92,13 @@ void SyncQuery::bindValue(int index, const QVariant &value)
 
 bool SyncQuery::exec()
 {
-    if (!m_stmt) {
-        m_lastError = QStringLiteral("No prepared statement");
+    if (!stmt) {
+        lastDbError = QStringLiteral("No prepared statement");
         return false;
     }
 
-    m_lastError.clear();
-    int rc = sqlite3_step(m_stmt);
+    lastDbError.clear();
+    int rc = sqlite3_step(stmt);
 
     if (rc == SQLITE_DONE) {
         // Statement completed (INSERT/UPDATE/DELETE with no results)
@@ -106,10 +106,10 @@ bool SyncQuery::exec()
         return true;
     } else if (rc == SQLITE_ROW) {
         // SELECT returned a row -- reset so next() starts from the beginning
-        sqlite3_reset(m_stmt);
+        sqlite3_reset(stmt);
         return true;
     } else {
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db->handle()));
+        lastDbError = QString::fromUtf8(sqlite3_errmsg(db->handle()));
         return false;
     }
 }
@@ -123,33 +123,33 @@ bool SyncQuery::exec(const QString &sql)
 
 bool SyncQuery::next()
 {
-    if (!m_stmt)
+    if (!stmt)
         return false;
 
-    int rc = sqlite3_step(m_stmt);
+    int rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW)
         return true;
 
     if (rc != SQLITE_DONE)
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db->handle()));
+        lastDbError = QString::fromUtf8(sqlite3_errmsg(db->handle()));
 
     return false;
 }
 
 QVariant SyncQuery::value(int index) const
 {
-    if (!m_stmt)
+    if (!stmt)
         return {};
 
-    int type = sqlite3_column_type(m_stmt, index);
+    int type = sqlite3_column_type(stmt, index);
     switch (type) {
     case SQLITE_INTEGER:
-        return QVariant(static_cast<qlonglong>(sqlite3_column_int64(m_stmt, index)));
+        return QVariant(static_cast<qlonglong>(sqlite3_column_int64(stmt, index)));
     case SQLITE_FLOAT:
-        return QVariant(sqlite3_column_double(m_stmt, index));
+        return QVariant(sqlite3_column_double(stmt, index));
     case SQLITE_BLOB: {
-        const void *data = sqlite3_column_blob(m_stmt, index);
-        int size = sqlite3_column_bytes(m_stmt, index);
+        const void *data = sqlite3_column_blob(stmt, index);
+        int size = sqlite3_column_bytes(stmt, index);
         return QVariant(QByteArray(static_cast<const char *>(data), size));
     }
     case SQLITE_NULL:
@@ -157,44 +157,44 @@ QVariant SyncQuery::value(int index) const
     case SQLITE_TEXT:
     default:
         return QVariant(QString::fromUtf8(
-            reinterpret_cast<const char *>(sqlite3_column_text(m_stmt, index)),
-            sqlite3_column_bytes(m_stmt, index)));
+            reinterpret_cast<const char *>(sqlite3_column_text(stmt, index)),
+            sqlite3_column_bytes(stmt, index)));
     }
 }
 
 int SyncQuery::columnCount() const
 {
-    return m_stmt ? sqlite3_column_count(m_stmt) : 0;
+    return stmt ? sqlite3_column_count(stmt) : 0;
 }
 
 QString SyncQuery::columnName(int index) const
 {
-    if (!m_stmt)
+    if (!stmt)
         return {};
-    const char *name = sqlite3_column_name(m_stmt, index);
+    const char *name = sqlite3_column_name(stmt, index);
     return name ? QString::fromUtf8(name) : QString();
 }
 
 int SyncQuery::numRowsAffected() const
 {
-    return m_db ? sqlite3_changes(m_db->handle()) : 0;
+    return db ? sqlite3_changes(db->handle()) : 0;
 }
 
 qint64 SyncQuery::lastInsertId() const
 {
-    return m_db ? sqlite3_last_insert_rowid(m_db->handle()) : 0;
+    return db ? sqlite3_last_insert_rowid(db->handle()) : 0;
 }
 
 QString SyncQuery::lastError() const
 {
-    return m_lastError;
+    return lastDbError;
 }
 
 void SyncQuery::finalize()
 {
-    if (m_stmt) {
-        sqlite3_finalize(m_stmt);
-        m_stmt = nullptr;
+    if (stmt) {
+        sqlite3_finalize(stmt);
+        stmt = nullptr;
     }
 }
 

@@ -69,22 +69,22 @@ public:
     void setSimulatedLatencyMs(int ms);
 
     /*! Returns the current simulated latency in milliseconds. */
-    int simulatedLatencyMs() const { return m_latencyMs; }
+    int simulatedLatencyMs() const { return latencyMs; }
 
     /*! Flushes any delayed files whose delay has elapsed. Called automatically by listChangesets(). */
     void flushDelayed();
 
     /*! Returns the shared folder path. */
-    QString folderPath() const { return m_folderPath; }
+    QString folderPath() const { return folderPathString; }
 
 signals:
     /*! Emitted when new changeset files appear in the folder. */
     void changesetsAvailable();
 
 private:
-    QString m_folderPath;
-    int m_latencyMs = 0;
-    QFileSystemWatcher m_watcher;
+    QString folderPathString;
+    int latencyMs = 0;
+    QFileSystemWatcher watcher;
 
     struct DelayedFile {
         QString filename;
