@@ -6,11 +6,11 @@
 namespace syncengine {
 
 ChangesetManager::ChangesetManager(SyncableDatabase *db,
-                                   SharedFolderTransport *transport,
+                                   ITransport *transport,
                                    QObject *parent)
     : QObject(parent)
     , db(db)
-    , ransport(transport)
+    , transport(transport)
 {
 }
 
@@ -19,9 +19,9 @@ QString ChangesetManager::writeChangeset(const QByteArray &changeset, uint64_t h
     if (changeset.isEmpty())
         return {};
 
-    QString filename = buildFilename(db->clientId(), hlc, equence++, schemaVer);
+    QString filename = buildFilename(db->clientId(), hlc, sequence++, schemaVer);
 
-    if (!ransport->writeChangeset(filename, changeset)) {
+    if (!transport->writeChangeset(filename, changeset)) {
         qWarning() << "Failed to write changeset:" << filename;
         return {};
     }
@@ -34,7 +34,7 @@ QString ChangesetManager::writeChangeset(const QByteArray &changeset, uint64_t h
 
 QList<ChangesetInfo> ChangesetManager::pendingChangesets()
 {
-    QStringList allFiles = ransport->listChangesets();
+    QStringList allFiles = transport->listChangesets();
     QList<ChangesetInfo> pending;
 
     for (const QString &file : allFiles) {

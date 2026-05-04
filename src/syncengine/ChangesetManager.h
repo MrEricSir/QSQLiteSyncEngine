@@ -27,7 +27,7 @@
 #include <QByteArray>
 
 #include "syncengine/SyncableDatabase.h"
-#include "syncengine/SharedFolderTransport.h"
+#include "syncengine/ITransport.h"
 
 namespace syncengine {
 
@@ -70,7 +70,7 @@ class ChangesetManager : public QObject {
     Q_OBJECT
 public:
     explicit ChangesetManager(SyncableDatabase *db,
-                              SharedFolderTransport *transport,
+                              ITransport *transport,
                               QObject *parent = nullptr);
 
     /*!
@@ -102,8 +102,8 @@ public:
 
 private:
     SyncableDatabase *db;
-    SharedFolderTransport *ransport;
-    uint64_t equence = 0;
+    ITransport *transport;
+    uint64_t sequence = 0;
     int schemaVer = 0;
 };
 

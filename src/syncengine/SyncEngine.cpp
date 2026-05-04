@@ -1,4 +1,5 @@
 #include "syncengine/SyncEngine.h"
+#include "syncengine/SharedFolderTransport.h"
 
 #include <QDebug>
 
@@ -11,6 +12,20 @@ SyncEngine::SyncEngine(const QString &dbPath,
     : QObject(parent)
     , db(std::make_unique<SyncableDatabase>(dbPath, clientId))
     , sharedTransport(std::make_unique<SharedFolderTransport>(sharedFolderPath, this))
+    , changesetMgr(std::make_unique<ChangesetManager>(db.get(), sharedTransport.get(), this))
+{
+    connect(&syncTimer, &QTimer::timeout, this, [this]() {
+        sync();
+    });
+}
+
+SyncEngine::SyncEngine(const QString &dbPath,
+                       std::unique_ptr<ITransport> transport,
+                       const QString &clientId,
+                       QObject *parent)
+    : QObject(parent)
+    , db(std::make_unique<SyncableDatabase>(dbPath, clientId))
+    , sharedTransport(std::move(transport))
     , changesetMgr(std::make_unique<ChangesetManager>(db.get(), sharedTransport.get(), this))
 {
     connect(&syncTimer, &QTimer::timeout, this, [this]() {
@@ -301,7 +316,8 @@ void SyncEngine::snapshotIfNeeded()
     }
 }
 
-bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
+bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied,
+                                   QList<SchemaLogCapture::Warning> &outWarnings)
 {
     // Reject changesets from a newer schema version
     if (info.schemaVersion > currentSchemaVersion) {
@@ -324,7 +340,8 @@ bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
 
     ConflictResolver resolver(db.get(), info.hlc, info.clientId);
 
-    if (db->applyChangeset(data, resolver.handler())) {
+    QList<SchemaLogCapture::Warning> warnings;
+    if (db->applyChangeset(data, resolver.handler(), &warnings)) {
         db->markChangesetApplied(info.filename, info.hlc);
         emit changesetApplied(info.filename);
         ++applied;
@@ -332,7 +349,8 @@ bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
     }
 
     // Schema mismatch is retryable (a later changeset may create the table)
-    if (!db->lastSchemaWarnings().isEmpty()) {
+    if (!warnings.isEmpty()) {
+        outWarnings = std::move(warnings);
         return false; // defer for retry
     }
 
@@ -342,18 +360,9 @@ bool SyncEngine::applyOneChangeset(const ChangesetInfo &info, int &applied)
     return true; // not retryable
 }
 
-void SyncEngine::emitApplyError(const ChangesetInfo &info)
+void SyncEngine::emitApplyError(const ChangesetInfo &info,
+                                const QList<SchemaLogCapture::Warning> &warnings)
 {
-    // Re-read the changeset to get fresh schema warnings
-    QByteArray data = sharedTransport->readChangeset(info.filename);
-    if (data.isEmpty()) {
-        return;
-    }
-
-    ConflictResolver resolver(db.get(), info.hlc, info.clientId);
-    db->applyChangeset(data, resolver.handler());
-
-    const auto &warnings = db->lastSchemaWarnings();
     if (!warnings.isEmpty()) {
         for (const auto &w : warnings) {
             emit syncErrorOccurred(SchemaMismatch,
@@ -368,41 +377,44 @@ void SyncEngine::emitApplyError(const ChangesetInfo &info)
 
 int SyncEngine::sync()
 {
+    struct DeferredItem {
+        ChangesetInfo info;
+        QList<SchemaLogCapture::Warning> warnings;
+    };
+
     QList<ChangesetInfo> pending = changesetMgr->pendingChangesets();
 
     int applied = 0;
-    QList<ChangesetInfo> deferred;
+    QList<DeferredItem> deferred;
 
     // First pass: apply all pending changesets. Changesets that fail due to
     // schema mismatch (e.g., table doesn't exist yet) are deferred for a
     // retry, because a later changeset in this batch may create the table.
     for (const ChangesetInfo &info : pending) {
-        if (!applyOneChangeset(info, applied)) {
-            deferred.append(info);
-        }
+        QList<SchemaLogCapture::Warning> warnings;
+        if (!applyOneChangeset(info, applied, warnings))
+            deferred.append({info, std::move(warnings)});
     }
 
     // Retry pass: if any changesets were deferred and at least one changeset
     // succeeded (possibly creating the missing table), try the deferred ones
     // again. Only emit errors for changesets that fail on the retry.
     if (!deferred.isEmpty() && applied > 0) {
-        QList<ChangesetInfo> stillFailing;
-        for (const ChangesetInfo &info : deferred) {
-            if (!applyOneChangeset(info, applied)) {
-                stillFailing.append(info);
-            }
+        QList<DeferredItem> stillFailing;
+        for (auto &item : deferred) {
+            QList<SchemaLogCapture::Warning> warnings;
+            if (!applyOneChangeset(item.info, applied, warnings))
+                stillFailing.append({item.info, std::move(warnings)});
         }
-        deferred = stillFailing;
+        deferred = std::move(stillFailing);
     }
 
     // Emit errors for changesets that failed on all attempts
-    for (const ChangesetInfo &info : deferred) {
-        emitApplyError(info);
-    }
+    for (const auto &item : deferred)
+        emitApplyError(item.info, item.warnings);
 
-    if (applied > 0 || !pending.isEmpty()) {
+    if (applied > 0 || !pending.isEmpty())
         emit syncCompleted(applied);
-    }
 
     return applied;
 }

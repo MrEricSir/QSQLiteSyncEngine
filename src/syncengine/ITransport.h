@@ -22,54 +22,36 @@
 
 #pragma once
 
-#include <QDir>
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
-#include <QFileSystemWatcher>
-#include <QObject>
-
-#include "syncengine/ITransport.h"
 
 namespace syncengine {
 
 /*!
-    \class syncengine::SharedFolderTransport
+    \class syncengine::ITransport
     \inmodule QSQLiteSyncEngine
     \internal
-    \brief File I/O abstraction for changeset files on a shared folder.
+    \brief Abstract interface for changeset file I/O.
 
-    SharedFolderTransport reads and writes changeset files to a shared folder
-    that may be backed by Google Drive, Dropbox, or a local network drive.
-    It uses QFileSystemWatcher to emit changesetsAvailable() when new files
-    appear.
+    Implemented by SharedFolderTransport for production use. Test code can
+    provide alternative implementations (e.g., DelayedTransport) via the
+    SyncEngine injection constructor.
 
-    \sa SyncEngine, ChangesetManager
+    \sa SharedFolderTransport, SyncEngine
 */
-class SharedFolderTransport : public QObject, public ITransport {
-    Q_OBJECT
+class ITransport {
 public:
-    explicit SharedFolderTransport(const QString &folderPath, QObject *parent = nullptr);
+    virtual ~ITransport() = default;
 
-    /*! Writes a changeset \a data to the shared folder as \a filename. */
-    bool writeChangeset(const QString &filename, const QByteArray &data) override;
+    /*! Writes a changeset \a data to the transport as \a filename. Returns true on success. */
+    virtual bool writeChangeset(const QString &filename, const QByteArray &data) = 0;
 
-    /*! Reads and returns the contents of the changeset \a filename. */
-    QByteArray readChangeset(const QString &filename) override;
+    /*! Reads and returns the contents of changeset \a filename. */
+    virtual QByteArray readChangeset(const QString &filename) = 0;
 
     /*! Returns all changeset filenames sorted by name (HLC order). */
-    QStringList listChangesets() override;
-
-    /*! Returns the shared folder path. */
-    QString folderPath() const { return folderPathString; }
-
-signals:
-    /*! Emitted when new changeset files appear in the folder. */
-    void changesetsAvailable();
-
-private:
-    QString folderPathString;
-    QFileSystemWatcher watcher;
+    virtual QStringList listChangesets() = 0;
 };
 
 } // namespace syncengine

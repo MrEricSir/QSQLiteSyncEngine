@@ -1,6 +1,5 @@
 #include "syncengine/SharedFolderTransport.h"
 
-#include <QDateTime>
 #include <QFile>
 #include <QDebug>
 
@@ -21,12 +20,6 @@ SharedFolderTransport::SharedFolderTransport(const QString &folderPath, QObject 
 
 bool SharedFolderTransport::writeChangeset(const QString &filename, const QByteArray &data)
 {
-    if (latencyMs > 0) {
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
-        m_delayed.append({filename, data, now + latencyMs});
-        return true;
-    }
-
     QString filePath = folderPathString + QStringLiteral("/") + filename;
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
@@ -51,42 +44,11 @@ QByteArray SharedFolderTransport::readChangeset(const QString &filename)
 
 QStringList SharedFolderTransport::listChangesets()
 {
-    flushDelayed();
-
     QDir dir(folderPathString);
     QStringList filters;
     filters << QStringLiteral("*.changeset");
     QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
     return files;
-}
-
-void SharedFolderTransport::setSimulatedLatencyMs(int ms)
-{
-    latencyMs = ms;
-}
-
-void SharedFolderTransport::flushDelayed()
-{
-    if (m_delayed.isEmpty())
-        return;
-
-    qint64 now = QDateTime::currentMSecsSinceEpoch();
-    QList<DelayedFile> stillDelayed;
-
-    for (const auto &df : m_delayed) {
-        if (now >= df.visibleAfterMs) {
-            // Write to disk now
-            QString filePath = folderPathString + QStringLiteral("/") + df.filename;
-            QFile file(filePath);
-            if (file.open(QIODevice::WriteOnly)) {
-                file.write(df.data);
-                file.close();
-            }
-        } else {
-            stillDelayed.append(df);
-        }
-    }
-    m_delayed = stillDelayed;
 }
 
 } // namespace syncengine

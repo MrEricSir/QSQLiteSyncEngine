@@ -155,13 +155,13 @@ static int conflictCallback(void *pCtx, int eConflict, sqlite3_changeset_iter *p
     return SQLITE_CHANGESET_OMIT;
 }
 
-bool SyncableDatabase::applyChangeset(const QByteArray &changeset, ConflictHandler handler)
+bool SyncableDatabase::applyChangeset(const QByteArray &changeset, ConflictHandler handler,
+                                      QList<SchemaLogCapture::Warning> *outWarnings)
 {
     if (!db || changeset.isEmpty()) {
         return false;
     }
 
-    schemaWarnings.clear();
     ConflictContext ctx{handler};
     SchemaLogCapture::Guard logGuard;
 
@@ -173,16 +173,17 @@ bool SyncableDatabase::applyChangeset(const QByteArray &changeset, ConflictHandl
         conflictCallback,
         &ctx);
 
-    schemaWarnings = logGuard.warnings();
-
     if (rc != SQLITE_OK) {
         qWarning() << "Failed to apply changeset:" << sqlite3_errmsg(db);
         return false;
     }
 
-    if (!schemaWarnings.isEmpty()) {
+    const QList<SchemaLogCapture::Warning> captured = logGuard.warnings();
+    if (!captured.isEmpty()) {
+        if (outWarnings)
+            *outWarnings = captured;
         qWarning() << "Schema mismatch -- changeset partially skipped:";
-        for (const auto &w : schemaWarnings)
+        for (const auto &w : captured)
             qWarning() << "  " << w.message;
         return false;
     }

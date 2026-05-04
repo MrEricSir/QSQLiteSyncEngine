@@ -30,7 +30,7 @@
 #include <memory>
 
 #include "syncengine/SyncableDatabase.h"
-#include "syncengine/SharedFolderTransport.h"
+#include "syncengine/ITransport.h"
 #include "syncengine/ChangesetManager.h"
 #include "syncengine/ConflictResolver.h"
 
@@ -229,6 +229,16 @@ public:
                         const QString &clientId,
                         QObject *parent = nullptr);
 
+    /*!
+        \internal
+        Constructs a SyncEngine with a custom \a transport. Used in tests to
+        inject a transport implementation (e.g., DelayedTransport).
+    */
+    explicit SyncEngine(const QString &dbPath,
+                        std::unique_ptr<ITransport> transport,
+                        const QString &clientId,
+                        QObject *parent = nullptr);
+
     ~SyncEngine();
 
     /*!
@@ -290,12 +300,6 @@ public:
     */
     QString endWrite();
 
-    /*!
-        \internal
-        Returns the SharedFolderTransport for testing (e.g., simulated latency).
-    */
-    SharedFolderTransport *transport() { return sharedTransport.get(); }
-
 signals:
     /*!
         Emitted when a remote changeset has been successfully applied.
@@ -322,8 +326,10 @@ signals:
     void syncCompleted(int appliedCount);
 
 private:
-    bool applyOneChangeset(const ChangesetInfo &info, int &applied);
-    void emitApplyError(const ChangesetInfo &info);
+    bool applyOneChangeset(const ChangesetInfo &info, int &applied,
+                           QList<SchemaLogCapture::Warning> &outWarnings);
+    void emitApplyError(const ChangesetInfo &info,
+                        const QList<SchemaLogCapture::Warning> &warnings);
     void recordRowHlcs(const QByteArray &changeset, uint64_t hlc);
     void snapshotIfNeeded();
     QStringList discoverUserTables();
@@ -333,7 +339,7 @@ private:
     Q_INVOKABLE void onTransactionCommitted();
 
     std::unique_ptr<SyncableDatabase> db;
-    std::unique_ptr<SharedFolderTransport> sharedTransport;
+    std::unique_ptr<ITransport> sharedTransport;
     std::unique_ptr<ChangesetManager> changesetMgr;
     QTimer syncTimer;
     QAtomicInt running{0};

@@ -93,8 +93,13 @@ public:
     /*! Ends tracking and extracts the changeset. Returns an empty QByteArray if no changes were made. */
     QByteArray endSession();
 
-    /*! Applies a binary \a changeset to this database. Returns true on success. */
-    bool applyChangeset(const QByteArray &changeset, ConflictHandler handler = nullptr);
+    /*!
+        Applies a binary \a changeset to this database. Returns true on success.
+        If \a warnings is non-null, it is populated with any schema warnings
+        produced during application (e.g. tables skipped due to schema mismatch).
+    */
+    bool applyChangeset(const QByteArray &changeset, ConflictHandler handler = nullptr,
+                        QList<SchemaLogCapture::Warning> *warnings = nullptr);
 
     /*!
         Generates a changeset containing INSERT records for all rows in the
@@ -137,19 +142,12 @@ public:
     /*! \internal Returns the HLC for a given row. */
     uint64_t getRowHlc(const QString &tableName, int64_t rowid);
 
-    /*!
-        Returns schema warnings from the most recent applyChangeset() call.
-        Non-empty if tables were skipped due to schema incompatibility.
-    */
-    const QList<SchemaLogCapture::Warning> &lastSchemaWarnings() const { return schemaWarnings; }
-
 private:
     QString dbPath;
     QString clientIdentifier;
     sqlite3 *db = nullptr;
     sqlite3_session *session = nullptr;
     HybridLogicalClock hlcClock;
-    QList<SchemaLogCapture::Warning> schemaWarnings;
     bool ownsHandle = true;
 };
 

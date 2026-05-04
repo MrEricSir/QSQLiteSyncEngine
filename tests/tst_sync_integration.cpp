@@ -1,8 +1,10 @@
 #include <QTest>
 #include <QTemporaryDir>
 #include <QSignalSpy>
+#include <QThread>
 
 #include "syncengine/SyncEngine.h"
+#include "DelayedTransport.h"
 
 using namespace syncengine;
 
@@ -181,11 +183,13 @@ private slots:
 
         QString sharedFolder = tmpDir.filePath("shared");
 
-        SyncEngine engineA(tmpDir.filePath("a.db"), sharedFolder, "clientA");
-        SyncEngine engineB(tmpDir.filePath("b.db"), sharedFolder, "clientB");
+        // Inject a DelayedTransport so A's writes are held back from disk.
+        auto delayed = std::make_unique<DelayedTransport>(sharedFolder);
+        delayed->setLatencyMs(500);
+        auto *delayedPtr = delayed.get();
 
-        // Set 500ms simulated latency on A's transport
-        engineA.transport()->setSimulatedLatencyMs(500);
+        SyncEngine engineA(tmpDir.filePath("a.db"), std::move(delayed), "clientA");
+        SyncEngine engineB(tmpDir.filePath("b.db"), sharedFolder, "clientB");
 
         QVERIFY(engineA.start(0));
         QVERIFY(engineB.start(0));
@@ -195,7 +199,7 @@ private slots:
         engineB.database()->exec(
             "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)");
 
-        // A writes -- changeset is delayed
+        // A writes -- changeset is held in DelayedTransport
         engineA.beginWrite();
         engineA.database()->exec("INSERT INTO items (id, name) VALUES (1, 'delayed')");
         engineA.endWrite();
@@ -204,11 +208,9 @@ private slots:
         int applied = engineB.sync();
         QCOMPARE(applied, 0);
 
-        // Wait for latency to elapse
+        // Wait for the latency window to elapse, then release the held file
         QThread::msleep(600);
-
-        // Flush A's delayed files to disk (simulates network propagation completing)
-        engineA.transport()->flushDelayed();
+        delayedPtr->flushDelayed();
 
         // Now B should see it
         applied = engineB.sync();
